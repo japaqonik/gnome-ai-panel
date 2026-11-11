@@ -21,7 +21,11 @@ blob-report/
 dist/
 build/
 extension/schemas/gschemas.compiled
+*.compiled
 *.shell-extension.zip
+
+# Runtime state of make run / run-headless / test-shell
+.run/
 
 # Environment / secrets
 .env

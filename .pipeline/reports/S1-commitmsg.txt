@@ -1,0 +1,11 @@
+feat(s1): add application skeleton
+
+The pl.local.AiPanel app starts in the background, shows an empty chat page in a
+WebView and answers the toggle/show/hide/new-chat/quit D-Bus actions.
+make setup/lint/test/run/run-headless/stop work.
+
+Tasks:
+- S1-T1 Repository, tooling and first test
+- S1-T2 GTK application with WebView and D-Bus actions
+- S1-T3 run/stop, headless mode and integration test
+UAT: passed (.pipeline/reports/S1-uat-1.md)

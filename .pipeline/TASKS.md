@@ -7,7 +7,7 @@ Wspólne zasady dla każdego taska: po zakończeniu `make lint` i `make test` ko
 Value: Aplikacja `pl.local.AiPanel` startuje w tle jako jedna instancja, pokazuje okno bez dekoracji z lokalną stroną czatu (ekran „Dodaj agenta") i daje się sterować akcjami D-Bus; projekt ma działające `setup`/`lint`/`test`/`run`/`stop`.
 
 ### S1-T1: Repozytorium, narzędzia i pierwszy test
-- Status: [ ]
+- Status: [x]
 - Depends on: -
 - Requirements: S1 setup
 - Scope: `git init` (gałąź `main`); `.gitignore` (`.venv/`, `node_modules/`, `.run/`, `dist/`, `__pycache__/`, `*.compiled`, `extension/schemas/gschemas.compiled`, `test-results/`, `playwright-report/`, `.env`); `.env.example` (zmienne z PLAN §13, bez wartości sekretów); `Makefile` ze wszystkimi celami z sekcji Commands (cele jeszcze bez implementacji wypisują „not implemented yet" i kończą się 0, poza `setup`, `lint`, `test`, `test-py`); `scripts/check-deps.sh`; `pyproject.toml` (ruff: line-length 100, target py312; pytest: `testpaths = ["tests"]`, `asyncio_mode = "auto"`, marker `gui`); `requirements.txt`, `requirements-dev.txt` z dokładnymi wersjami; `package.json` + `package-lock.json` (devDependencies z PLAN §8), `eslint.config.mjs` (globale browser dla `app/ui`, GJS dla `extension`), `playwright.config.mjs` (`testDir: tests/ui`, przeglądarka z `PW_BROWSER`, domyślnie webkit); `app/__init__.py` z `__version__ = "0.1.0"`; `tests/conftest.py` z fiksturą `isolated_env` (HOME i XDG_* w `tmp_path`); `tests/unit/test_version.py`; `tests/gjs/run.js` (mini-runner: importuje `*.test.js`, liczy porażki, `imports.system.exit(1)` przy błędzie) z `tests/gjs/sanity.test.js`; README (cel, wymagania systemowe z `sudo apt install …`, `make setup`, `make test`, `make run`).
@@ -19,7 +19,7 @@ Value: Aplikacja `pl.local.AiPanel` startuje w tle jako jedna instancja, pokazuj
 - Tests: `test_version` (wersja jest stringiem semver); `sanity.test.js` (runner wykrywa porażkę: osobny test runnera uruchamia `gjs` na pliku z celowym błędem i oczekuje kodu ≠ 0).
 
 ### S1-T2: Aplikacja GTK z WebView i akcjami D-Bus
-- Status: [ ]
+- Status: [x]
 - Depends on: S1-T1
 - Requirements: FR-1, FR-2, FR-3, FR-4
 - Scope: `app/__main__.py`, `app/main.py` (`Adw.Application(application_id="pl.local.AiPanel")`, `hold()`, pętla asyncio przez `gi.events.GLibEventLoopPolicy`, akcje `toggle`/`show`/`hide`/`new-chat`/`quit` + stanowa `visible` (b), opcja `--background` = start bez pokazywania okna), `app/window.py` (`Adw.ApplicationWindow`, `set_decorated(False)`, domyślny rozmiar 480×900, `WebKit.WebView` ładujący `app/ui/index.html` przez `file://`, ukrywanie zamiast niszczenia przy zamknięciu), `app/bridge.py` (rejestracja handlera `bridge`, odbiór `ready` → log `ui ready`), `app/logging_setup.py` (plik w `$XDG_STATE_HOME/gnome-ai-panel/app.log` + stderr, `AI_PANEL_LOG_LEVEL`), `app/ui/index.html` (CSP z PLAN NFR-2, ekran pusty „Brak skonfigurowanych agentów — Dodaj agenta" z identyfikatorem `#empty-state`), `app/ui/app.js` (wysyła `ready`), `app/ui/style.css`.
@@ -30,7 +30,7 @@ Value: Aplikacja `pl.local.AiPanel` startuje w tle jako jedna instancja, pokazuj
 - Tests: `tests/unit/test_asyncio_glib.py`: na `GLibEventLoop` działa `asyncio.create_subprocess_exec("true")` i `asyncio.sleep` (wynik determinuje plan B z PLAN §7 – jeśli test nie przejdzie, implementer przełącza na wątek roboczy i dokumentuje to w README); `tests/unit/test_actions.py`: lista zarejestrowanych akcji i typ stanu `visible` (bez okna, `Gio.Application` nie rejestrowana na szynie).
 
 ### S1-T3: run/stop, tryb headless i test integracyjny
-- Status: [ ]
+- Status: [x]
 - Depends on: S1-T2
 - Requirements: FR-1, FR-3
 - Scope: `scripts/run.sh`, `scripts/run-headless.sh` (Xvfb `-displayfd`, `dbus-daemon --session --fork --print-address`, izolowane XDG w `.run/home`, zapis `.run/headless.env` z `DISPLAY`, `DBUS_SESSION_BUS_ADDRESS`, `XDG_*`, `AI_PANEL_DEBUG=1`, `GDK_BACKEND=x11`), `scripts/stop.sh` zgodnie z sekcją Commands; cele Makefile `run`, `run-headless`, `stop`; `tests/integration/conftest.py` z fiksturą `app_process` (start aplikacji jako podproces w bieżącym środowisku testu, czekanie na `ui ready`, sprzątanie); `tests/integration/test_app_actions.py` (marker `gui`); `tests/ui/smoke.spec.mjs` + `tests/ui/mock-bridge.js`.

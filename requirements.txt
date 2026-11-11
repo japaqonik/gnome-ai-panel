@@ -1,0 +1,3 @@
+# Runtime dependencies (PLAN §8). Exact pins; the venv uses --system-site-packages for `gi`.
+httpx==0.28.1
+tomlkit==0.13.3

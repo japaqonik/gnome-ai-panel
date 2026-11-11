@@ -1,0 +1,73 @@
+:root {
+    color-scheme: light dark;
+    --bg: #fafafb;
+    --fg: #1e1e22;
+    --muted: #5e5c64;
+    --accent-bg: #3584e4;
+    --accent-fg: #ffffff;
+    font-family: system-ui, "Cantarell", sans-serif;
+    font-size: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #222226;
+        --fg: #f6f5f4;
+        --muted: #c0bfbc;
+        --accent-bg: #1c71d8;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+}
+
+#app {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 24px;
+    text-align: center;
+}
+
+.empty-state__title {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--muted);
+}
+
+.button {
+    font: inherit;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.button--primary {
+    background: var(--accent-bg);
+    color: var(--accent-fg);
+}
+
+.button:focus-visible {
+    outline: 2px solid var(--accent-bg);
+    outline-offset: 2px;
+}

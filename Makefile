@@ -83,8 +83,9 @@ run-headless:
 stop:
 	scripts/stop.sh
 
+# Silent recipe: stdout carries only the CLI output (e.g. JSON).
 cli:
-	$(not_implemented)
+	@$(PY) -m app.cli $(ARGS)
 
 install:
 	$(not_implemented)

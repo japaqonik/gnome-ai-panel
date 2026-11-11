@@ -1,0 +1,13 @@
+feat(s2): add config loading and terminal ACP client
+
+config.toml is loaded and validated (check-config, agents), secrets can be
+stored in GNOME Keyring (secret set/has/delete), and any configured ACP agent
+can be tested and chatted with from the terminal (test-agent, chat).
+
+Tasks:
+- S2-T1 Load and validate config.toml
+- S2-T2 Value sources and secrets
+- S2-T3 JSON-RPC stdio transport and fake ACP agent
+- S2-T4 AcpBackend
+- S2-T5 CLI: chat and test-agent
+UAT: passed (.pipeline/reports/S2-uat-1.md)

@@ -1,0 +1,17 @@
+# Invalid configuration for check-config tests: "good" stays usable, "broken" is skipped.
+default_agent = "good"
+
+[agents.good]
+type = "acp"
+command = "/usr/bin/true"
+cwd = "~/.cache/ai-panel"
+
+[agents.broken]
+type = "acp"
+# command missing
+cwd = "~/.cache/ai-panel"
+startup_timeout_s = "dużo"
+mcp = ["nie-ma-takiego"]
+
+[agents.broken.env]
+TOKEN = { source = "vault", name = "x" }

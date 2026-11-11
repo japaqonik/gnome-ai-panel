@@ -55,7 +55,7 @@ Value: Aplikacja `pl.local.AiPanel` startuje w tle jako jedna instancja, pokazuj
 Value: Użytkownik wpisuje dowolnego agenta ACP (np. `kiro-cli acp`) do `config.toml`, z sekretami z keyringu/env/komendy, i rozmawia z nim z terminala (`make cli ARGS="chat …"`), widząc strumień zdarzeń; `test-agent` mówi czytelnie, co jest nie tak.
 
 ### S2-T1: Wczytywanie i walidacja config.toml
-- Status: [ ]
+- Status: [x]
 - Depends on: S1-T1
 - Requirements: FR-20, FR-23, FR-27
 - Scope: `app/config.py`: model danych z PLAN §11.1 (bez `ValueSource` rozwiązywania – tylko parsowanie), ścieżka z `AI_PANEL_CONFIG`/XDG, parsowanie tomlkit, rozwijanie `~` i ścieżek względnych (względem katalogu pliku), walidacja (wymagane pola, typy, nieznany `type`, nieznany `source`, `mcp` odwołujące się do nieistniejącego `[mcp.x]`, nieznany `default_agent`, `width` itp.) zwracająca listę `ConfigError(path, message)`; błędny agent pomijany, reszta działa; brak pliku = pusta konfiguracja; ostrzeżenie `literal` dla nazw pasujących do `KEY|TOKEN|SECRET|PASSWORD`; ostrzeżenie o uprawnieniach pliku (group/other writable). `app/cli.py` z komendami `check-config` i `agents [--json]`.
@@ -66,7 +66,7 @@ Value: Użytkownik wpisuje dowolnego agenta ACP (np. `kiro-cli acp`) do `config.
 - Tests: unit `tests/unit/test_config.py`: przykład z SPEC §5.3 parsuje się (2 agenci, 1 MCP, chat); brak pliku; pusty plik; błąd składni TOML → jeden `ConfigError` z numerem linii; każdy rodzaj błędu walidacji; `default_agent` pusty dozwolony; rozwijanie `~`; ostrzeżenie `literal` dla `SOME_API_KEY`, brak ostrzeżenia dla `PLAIN_VALUE`; ostrzeżenie uprawnień przy `0666`.
 
 ### S2-T2: Źródła wartości i sekrety
-- Status: [ ]
+- Status: [x]
 - Depends on: S2-T1
 - Requirements: FR-21
 - Scope: `app/secrets.py`: `SecretStore` (Protocol) + `LibsecretStore` (GI `Secret`, schemat `pl.local.AiPanel.Secret`, atrybut `name`) + `MemoryStore` (testy); `resolve(source, *, store, prompt_cb) -> str|None` dla `keyring`, `env`, `command` (`shlex.split`, bez powłoki, timeout 10 s, obcięcie końcowego `\n`, błąd z kodem wyjścia, bez stdout w komunikacie), `prompt` (async callback; w CLI: `getpass` gdy TTY, inaczej błąd „wymaga interakcji"), `literal`; `resolve_env(agent) -> dict[str,str]`; brak wartości dla zmiennej opcjonalnej nie jest błędem (zmienna pomijana, log INFO z nazwą, nie wartością). CLI: `secret set NAME` (stdin), `secret delete NAME`, `secret has NAME`. Filtr logowania redagujący znane wartości sekretów.
@@ -76,7 +76,7 @@ Value: Użytkownik wpisuje dowolnego agenta ACP (np. `kiro-cli acp`) do `config.
 - Tests: unit: każde źródło; `command` z `printf secret` → `secret`; `command` z `false` → błąd bez wartości; `command` z timeoutem (`sleep 20`, timeout 0.5 s); `env` brak zmiennej → `None`; test redakcji: wartość sekretu nie występuje w przechwyconym logu ani w `str(error)`; integracja `LibsecretStore` pomijana, gdy brak usługi.
 
 ### S2-T3: Transport JSON-RPC po stdio i fałszywy agent ACP
-- Status: [ ]
+- Status: [x]
 - Depends on: S1-T1
 - Requirements: FR-15, FR-18
 - Scope: `app/backends/base.py` (zdarzenia i `Backend` z PLAN §11.2); `app/backends/jsonrpc.py`: `JsonRpcConnection(reader, writer)` – wysyłanie żądań z korelacją `id`, powiadomień, obsługa przychodzących żądań (handler zwraca wynik lub błąd JSON-RPC), przychodzących powiadomień, limit linii 16 MiB, ignorowanie linii nie-JSON (log DEBUG), błąd wszystkich oczekujących żądań przy EOF, logowanie ruchu na DEBUG z redakcją pól `env`/`headers`. `tests/fakes/fake_acp_agent.py`: samodzielny skrypt (tylko stdlib) implementujący scenariusze z PLAN „Commands".
@@ -86,7 +86,7 @@ Value: Użytkownik wpisuje dowolnego agenta ACP (np. `kiro-cli acp`) do `config.
 - Tests: unit na parze potoków w pamięci: korelacja odpowiedzi poza kolejnością, błąd JSON-RPC → wyjątek z kodem, przychodzące żądanie → odpowiedź, linia `garbage` pominięta, linia 1 MiB przechodzi, EOF → oczekujące żądania kończą się wyjątkiem `ConnectionClosed`, redakcja `env` w logu.
 
 ### S2-T4: AcpBackend
-- Status: [ ]
+- Status: [x]
 - Depends on: S2-T2, S2-T3
 - Requirements: FR-15, FR-16, FR-17, FR-29, FR-46, FR-50
 - Scope: `app/backends/acp.py`: start procesu (`asyncio.create_subprocess_exec`, argv z `command`+`args`, env = sesja + `resolve_env`, `cwd` tworzony `0700`), `initialize` (`protocolVersion: 1`, `clientCapabilities: {fs:{readTextFile:false,writeTextFile:false}, terminal:false}`, `clientInfo`), timeout `startup_timeout_s`, odrzucenie innej wersji (Error kind `protocol`); `new_session()` → `session/new` z absolutnym `cwd`, `mcpServers` z listy `mcp` (env jako lista `{name,value}`), `_meta` = `session_meta`, `systemPrompt` (append) tylko gdy agent ogłasza `sessionCapabilities.systemPrompt`; `send()` → `session/prompt` i mapowanie `session/update` (`agent_message_chunk`→TextDelta, `agent_thought_chunk`→ThinkingDelta, `tool_call`→ToolCall, `tool_call_update`→ToolUpdate, `config_option_update`→ConfigOptions, `usage_update`→Usage, reszta ignorowana) z routingiem po `sessionId`; `session/request_permission` → PermissionRequest i oczekiwanie na `respond_permission`; `cancel()` → `session/cancel` + odpowiedź `cancelled` na oczekujące zgody; wynik → Done(stopReason); `auth_required` → Error kind `auth` z listą `authMethods`; brak komendy → Error kind `spawn` („Nie znaleziono polecenia: …"); koniec procesu w trakcie tury → Error kind `crashed` z kodem i ostatnimi 20 liniami stderr; ponowny start przy następnym `new_session` (limit 3/60 s); `close()` SIGTERM → 3 s → SIGKILL. Jeden proces na agenta (rejestr w `app/backends/__init__.py`: `get_backend(agent_cfg)`).
@@ -95,7 +95,7 @@ Value: Użytkownik wpisuje dowolnego agenta ACP (np. `kiro-cli acp`) do `config.
 - Tests: integracja z fałszywym agentem: `echo` (kolejność i treść TextDelta, Done `end_turn`), `thinking`, `tool` (ToolCall + 2 ToolUpdate), `permission` (allow → tool `completed`; reject → `failed`/odmowa), `slow` + cancel (Done `cancelled` ≤ 2 s), `crash` (Error `crashed` zawiera `boom`, kolejna sesja działa po restarcie), `bad-version`, `auth`, `noise`, brak komendy, timeout startu (`sleep 30` jako komenda, timeout 1 s), dwie sesje równolegle w jednym procesie z poprawnym routingiem, `mcpServers` i `_meta` trafiają do `session/new` (fałszywy agent zapisuje otrzymane params do pliku wskazanego `--record`), sekret z `env` trafia do środowiska procesu (scenariusz `env`).
 
 ### S2-T5: CLI: chat i test-agent
-- Status: [ ]
+- Status: [x]
 - Depends on: S2-T4
 - Requirements: FR-49, FR-25
 - Scope: `app/cli.py`: `chat ID PROMPT [--json] [--permission deny|allow] [--cancel-after S]` (tekst na stdout na bieżąco, myślenie/narzędzia/zgody jako linie z prefiksem `[thinking]`, `[tool]`, `[permission]`; `--json` = JSON Lines zdarzeń; domyślnie zgody odrzucane z komunikatem), `test-agent ID` (wspólna funkcja `app/diagnostics.py:test_agent(cfg) -> TestResult(ok, agent_info, protocol_version, auth_methods, error)` wykonująca start, `initialize`, `session/new`, zamknięcie; czytelne komunikaty po polsku dla każdego typu błędu). Konfiguracja przykładowa `tests/data/config_fake.toml`: `default_agent = "fake-echo"` i po jednym agencie `fake-<scenariusz>` dla każdego scenariusza z PLAN „Commands” (`fake-echo`, `fake-thinking`, `fake-tool`, `fake-perm`, `fake-slow`, `fake-crash`, `fake-crash-once`, `fake-badver`, `fake-auth`, `fake-noise`, `fake-models`, `fake-load`, `fake-usage`, `fake-image`, `fake-env` z `SECRET_VAR = {source="command", cmd="printf s3cr3t-value"}`) oraz `fake-missing` (`command = "/nonexistent/agent"`). Ścieżki względne rozwijane względem katalogu pliku.

@@ -1,0 +1,122 @@
+# Fake ACP agents for the CLI, tests and UAT (one agent per scenario of
+# tests/fakes/fake_acp_agent.py). Relative paths are resolved against this directory, so the
+# file works from any working directory as long as the repository has a .venv.
+#
+#   AI_PANEL_CONFIG=tests/data/config_fake.toml make cli ARGS="chat fake-echo 'Cześć'"
+#
+# Every agent has its own cwd under ~/.cache (crash-once keeps a marker file there).
+default_agent = "fake-echo"
+
+[agents.fake-echo]
+type = "acp"
+command = "../../.venv/bin/python"
+args = ["../fakes/fake_acp_agent.py", "--scenario", "echo"]
+cwd = "~/.cache/gnome-ai-panel-fake/echo"
+startup_timeout_s = 10
+
+[agents.fake-thinking]
+type = "acp"
+command = "../../.venv/bin/python"
+args = ["../fakes/fake_acp_agent.py", "--scenario", "thinking"]
+cwd = "~/.cache/gnome-ai-panel-fake/thinking"
+startup_timeout_s = 10
+
+[agents.fake-tool]
+type = "acp"
+command = "../../.venv/bin/python"
+args = ["../fakes/fake_acp_agent.py", "--scenario", "tool"]
+cwd = "~/.cache/gnome-ai-panel-fake/tool"
+startup_timeout_s = 10
+
+[agents.fake-perm]
+type = "acp"
+command = "../../.venv/bin/python"
+args = ["../fakes/fake_acp_agent.py", "--scenario", "permission"]
+cwd = "~/.cache/gnome-ai-panel-fake/perm"
+startup_timeout_s = 10
+
+[agents.fake-slow]
+type = "acp"
+command = "../../.venv/bin/python"
+args = ["../fakes/fake_acp_agent.py", "--scenario", "slow"]
+cwd = "~/.cache/gnome-ai-panel-fake/slow"
+startup_timeout_s = 10
+
+[agents.fake-crash]
+type = "acp"
+command = "../../.venv/bin/python"
+args = ["../fakes/fake_acp_agent.py", "--scenario", "crash"]
+cwd = "~/.cache/gnome-ai-panel-fake/crash"
+startup_timeout_s = 10
+
+[agents.fake-crash-once]
+type = "acp"
+command = "../../.venv/bin/python"
+args = ["../fakes/fake_acp_agent.py", "--scenario", "crash-once"]
+cwd = "~/.cache/gnome-ai-panel-fake/crash-once"
+startup_timeout_s = 10
+
+[agents.fake-badver]
+type = "acp"
+command = "../../.venv/bin/python"
+args = ["../fakes/fake_acp_agent.py", "--scenario", "bad-version"]
+cwd = "~/.cache/gnome-ai-panel-fake/badver"
+startup_timeout_s = 10
+
+[agents.fake-auth]
+type = "acp"
+command = "../../.venv/bin/python"
+args = ["../fakes/fake_acp_agent.py", "--scenario", "auth"]
+cwd = "~/.cache/gnome-ai-panel-fake/auth"
+startup_timeout_s = 10
+
+[agents.fake-noise]
+type = "acp"
+command = "../../.venv/bin/python"
+args = ["../fakes/fake_acp_agent.py", "--scenario", "noise"]
+cwd = "~/.cache/gnome-ai-panel-fake/noise"
+startup_timeout_s = 10
+
+[agents.fake-models]
+type = "acp"
+command = "../../.venv/bin/python"
+args = ["../fakes/fake_acp_agent.py", "--scenario", "models"]
+cwd = "~/.cache/gnome-ai-panel-fake/models"
+startup_timeout_s = 10
+
+[agents.fake-load]
+type = "acp"
+command = "../../.venv/bin/python"
+args = ["../fakes/fake_acp_agent.py", "--scenario", "load"]
+cwd = "~/.cache/gnome-ai-panel-fake/load"
+startup_timeout_s = 10
+
+[agents.fake-usage]
+type = "acp"
+command = "../../.venv/bin/python"
+args = ["../fakes/fake_acp_agent.py", "--scenario", "usage"]
+cwd = "~/.cache/gnome-ai-panel-fake/usage"
+startup_timeout_s = 10
+
+[agents.fake-image]
+type = "acp"
+command = "../../.venv/bin/python"
+args = ["../fakes/fake_acp_agent.py", "--scenario", "image"]
+cwd = "~/.cache/gnome-ai-panel-fake/image"
+startup_timeout_s = 10
+
+[agents.fake-env]
+type = "acp"
+command = "../../.venv/bin/python"
+args = ["../fakes/fake_acp_agent.py", "--scenario", "env"]
+cwd = "~/.cache/gnome-ai-panel-fake/env"
+startup_timeout_s = 10
+
+[agents.fake-env.env]
+SECRET_VAR = { source = "command", cmd = "printf s3cr3t-value" }
+
+[agents.fake-missing]
+type = "acp"
+command = "/nonexistent/agent"
+cwd = "~/.cache/gnome-ai-panel-fake/missing"
+startup_timeout_s = 10

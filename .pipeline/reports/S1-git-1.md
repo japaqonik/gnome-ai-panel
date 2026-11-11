@@ -27,3 +27,9 @@ Mode: COMMIT, stage S1 "Szkielet aplikacji".
 - `git add -A`, `git commit -F .pipeline/reports/S1-commitmsg.txt`, `git push origin main`.
 
 ## Result
+- Commit: `05c4b37` `feat(s1): add application skeleton`
+- Push: `git push origin main` → OK, `cdc7313..05c4b37  main -> main`.
+- Note: this Result section was appended after the commit, so this file shows as modified
+  locally and will go into the next stage commit.
+
+Verdict: DONE

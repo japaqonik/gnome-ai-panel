@@ -1,0 +1,33 @@
+# Example from SPEC §5.3: 2 agents, 1 MCP server, [chat]. Paths and names are illustrations only.
+default_agent = "moj-agent"          # opcjonalne; może być puste
+
+[agents.moj-agent]
+type = "acp"
+command = "/ścieżka/do/agenta"       # dowolna komenda
+args = ["acp"]                       # dowolne argumenty
+cwd = "~/.cache/ai-panel"
+startup_timeout_s = 20
+mcp = []                             # nazwy serwerów MCP z sekcji [mcp.*]
+
+[agents.moj-agent.env]               # dowolne zmienne, wszystkie opcjonalne
+SOME_API_KEY = { source = "keyring", name = "moj-agent-key" }
+SOME_OTHER   = { source = "env",     name = "ZMIENNA_Z_SYSTEMU" }
+FROM_TOOL    = { source = "command", cmd = "pass show ai/klucz" }
+ASK_ME       = { source = "prompt" }               # pytaj przy uruchomieniu
+PLAIN_VALUE  = { source = "literal", value = "tekst" }  # nie dla sekretów
+
+[agents.szybki-czat]
+type = "api"                         # prosty czat przez HTTP, bez narzędzi
+endpoint = "https://adres/api"       # dowolny endpoint zgodny z formatem
+model = "nazwa-modelu"
+system_prompt = "Odpowiadaj zwięźle i po polsku."
+api_key = { source = "keyring", name = "szybki-czat-key" }
+
+[mcp.gnome]                          # opcjonalny serwer MCP
+command = "gnome-ai-panel-mcp"
+args = []
+
+[chat]
+font_size = 14
+theme = "system"                     # system / light / dark
+history_dir = "~/.local/share/gnome-ai-panel"

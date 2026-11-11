@@ -7,6 +7,7 @@ import logging
 import logging.handlers
 import os
 import sys
+import threading
 from pathlib import Path
 
 LOGGER_NAME = "app"
@@ -14,6 +15,68 @@ LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 MAX_BYTES = 1024 * 1024
 BACKUP_COUNT = 3
+
+REDACTED = "[redacted]"
+# Shorter values are not redacted: replacing every "ab" in the log would make it unreadable
+# and such values are no real protection anyway.
+MIN_SECRET_LENGTH = 4
+
+
+class SecretRedactor(logging.Filter):
+    """Replaces known secret values in log records with ``REDACTED``.
+
+    Attach it to handlers (handler filters see records of child loggers too). Values are
+    added with ``register()`` by ``app/secrets.py`` whenever a secret is resolved.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._lock = threading.Lock()
+        self._values: tuple[str, ...] = ()
+
+    def register(self, value: str | None) -> None:
+        if not value or len(value) < MIN_SECRET_LENGTH:
+            return
+        with self._lock:
+            if value in self._values:
+                return
+            # Longest first, so a secret containing another one is replaced as a whole.
+            self._values = tuple(sorted((*self._values, value), key=len, reverse=True))
+
+    def clear(self) -> None:
+        with self._lock:
+            self._values = ()
+
+    def redact(self, text: str) -> str:
+        for value in self._values:
+            if value in text:
+                text = text.replace(value, REDACTED)
+        return text
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not self._values:
+            return True
+        try:
+            message = record.getMessage()
+        except Exception:  # a broken format string must not hide the record
+            message = str(record.msg)
+        record.msg = self.redact(message)
+        record.args = None
+        if record.exc_info and not record.exc_text:
+            record.exc_text = logging.Formatter().formatException(record.exc_info)
+        if record.exc_text:
+            record.exc_text = self.redact(record.exc_text)
+        if record.stack_info:
+            record.stack_info = self.redact(record.stack_info)
+        return True
+
+
+REDACTOR = SecretRedactor()
+
+
+def register_secret(value: str | None) -> None:
+    """Never write ``value`` to the log (handlers set up by ``setup_logging``)."""
+    REDACTOR.register(value)
 
 
 def state_dir() -> Path:
@@ -36,8 +99,12 @@ def parse_level(value: str | None) -> tuple[int, bool]:
     return logging.INFO, False
 
 
-def setup_logging() -> Path:
-    """Configure the ``app`` logger. Safe to call more than once. Returns the log path."""
+def setup_logging(stderr_level: int | None = None) -> Path:
+    """Configure the ``app`` logger. Safe to call more than once. Returns the log path.
+
+    ``stderr_level`` raises the threshold of the stderr handler only (the CLI keeps its
+    terminal output clean this way); the log file always uses the configured level.
+    """
     raw_level = os.environ.get("AI_PANEL_LOG_LEVEL")
     level, valid = parse_level(raw_level)
 
@@ -52,6 +119,9 @@ def setup_logging() -> Path:
 
     stderr_handler = logging.StreamHandler(sys.stderr)
     stderr_handler.setFormatter(formatter)
+    if stderr_level is not None:
+        stderr_handler.setLevel(stderr_level)
+    stderr_handler.addFilter(REDACTOR)
     logger.addHandler(stderr_handler)
 
     path = log_path()
@@ -64,6 +134,7 @@ def setup_logging() -> Path:
         logger.warning("cannot open log file %s: %s", path, exc)
     else:
         file_handler.setFormatter(formatter)
+        file_handler.addFilter(REDACTOR)
         logger.addHandler(file_handler)
 
     if not valid:

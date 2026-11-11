@@ -2,8 +2,8 @@
 status: running
 spec: /home/rpac/Dev/gnome-ai-panel/gnome-ai-panel.md
 remote: https://github.com/japaqonik/gnome-ai-panel
-current: S1-git
-counters: test_loops=0 fix_cycles=0 git_rejects=0
+current: S2-git
+counters: test_loops=4 fix_cycles=0 git_rejects=0
 
 ## History
 - 2026-11-10T21:35:28+01:00 planning started
@@ -15,3 +15,10 @@ counters: test_loops=0 fix_cycles=0 git_rejects=0
 - 2026-11-10T23:45:00+01:00 S1-T3 PASS (attempts: 1); notes: S3-T4 done-when uses `gapplication list-actions` (fails without .desktop until S6); /tmp/aip-wklibs leftover for manual removal
 - 2026-11-11T16:50:20+01:00 resumed at S1-uat
 - 2026-11-11T17:10:00+01:00 S1 UAT PASS (S1-uat-1); UAT-S1-4 [manual] needs visual confirmation by the user (no title bar, "Dodaj agenta")
+- 2026-11-11T17:20:00+01:00 S1 committed 05c4b37 (feat(s1): add application skeleton), pushed to origin/main
+- 2026-11-11T17:50:00+01:00 S2-T1 PASS (attempts: 1); notes: `make cli` exits 2 on failure (make limitation, CLI exits 1, documented); non-blocking: KEY substring match warns on e.g. MONKEY
+- 2026-11-11T18:40:00+01:00 S2-T2 PASS (attempts: 2); fixed: timed-out command left children running; decision: keyring used only when Secret Service already runs on the bus (no D-Bus activation)
+- 2026-11-11T19:40:00+01:00 S2-T3 PASS (attempts: 3); fixed: unencodable reply hang, deep-nesting RecursionError (parse + DEBUG log); open (non-blocking): `"id": NaN` request gets no reply; `make test-py` cleanup prints `rm: … doc: Jest katalogiem` and leaves /tmp runtime dir (Makefile, S1 code)
+- 2026-11-11T20:20:00+01:00 S2-T4 PASS (attempts: 1); integration tests 5.95 s; non-blocking: MCP commands looked up in app PATH (not agent env PATH); send() after close() reports kind `crashed`
+- 2026-11-11T21:10:00+01:00 S2-T5 PASS (attempts: 2); fixed: --cancel-after 0 race (CLI + fake agent); open (non-blocking): app.log created 0664 (logging_setup, S1); interrupted --json run has no final done line; configOptions from session/new not printed; leftover ~/.cache/gnome-ai-panel-fake in real HOME (user may remove)
+- 2026-11-11T21:50:00+01:00 S2 UAT PASS (S2-uat-1); UAT-S2-5 passed with real kiro-cli 2.26.0; note: UAT wrote+deleted test-x item in user's real keyring (HOME isolation does not isolate keyring); 8 old /tmp/ai-panel-test-runtime.* dirs remain

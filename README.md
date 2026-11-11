@@ -8,8 +8,12 @@ speaking the [Agent Client Protocol](https://agentclientprotocol.com) (e.g. `kir
   background and controlled through D-Bus actions,
 - a GNOME Shell extension that docks the window to a screen edge and toggles it with a shortcut.
 
-Status: early development (stage S1). The application starts, shows an empty chat page and
-answers the D-Bus actions below; it cannot talk to agents yet.
+Status: early development (stage S2). The application starts, shows an empty chat page and
+answers the D-Bus actions below; the window cannot talk to agents yet. The configuration file
+is read and validated by the CLI, and secrets can be stored in the keyring (see Configuration).
+The ACP client (`app/backends/acp.py`, one process per agent, restarted after a crash at most
+3 times per 60 s) works from the terminal: `chat` runs one turn with any configured agent and
+`test-agent` checks the connection (see Chatting from the terminal).
 
 ## System requirements
 
@@ -74,6 +78,108 @@ asyncio runs directly on the GLib main loop (`gi.events.GLibEventLoopPolicy`, Py
 `tests/unit/test_asyncio_glib.py` checks that subprocesses and timers work on it, so the
 worker-thread fallback from the plan is not needed.
 
+## Configuration
+
+Agents, MCP servers and chat appearance live in `~/.config/gnome-ai-panel/config.toml`
+(`$XDG_CONFIG_HOME/gnome-ai-panel/config.toml`; `AI_PANEL_CONFIG` overrides the path). Nothing
+is preconfigured: a missing file means an empty, valid configuration, and the file is never
+created automatically. `tests/data/config_valid.toml` contains the format example from the
+spec (§5.3).
+
+```bash
+make cli ARGS="check-config"                       # or: --config path/to/config.toml
+make cli ARGS="agents"                             # valid agents (id, type, name)
+make cli ARGS="agents --json"
+```
+
+`check-config` prints one line per problem, `path: message` (e.g.
+`agents.broken.command: wymagane`; problems of the whole file, such as TOML syntax errors, are
+printed as `file:line: message`), then warnings prefixed with `ostrzeżenie: `. It exits 1 when
+there are errors and 0 otherwise (warnings do not fail). Note that `make` itself exits with 2
+whenever the command fails; run `.venv/bin/python -m app.cli check-config` to get the exact
+exit code. An invalid `[agents.x]` or `[mcp.x]` entry is skipped and the rest keeps working;
+an invalid `[chat]` value falls back to its default; unknown keys only produce warnings.
+
+Warnings are given for a `literal` value source whose variable name contains `KEY`, `TOKEN`,
+`SECRET` or `PASSWORD` (any case), and when the file is writable by group or others
+(`chmod 600 ~/.config/gnome-ai-panel/config.toml`).
+
+Value sources (`env.NAME = { source = "…", … }` of an agent or MCP server, `api_key` of an API
+agent):
+
+| Source | Keys | Value |
+|---|---|---|
+| `keyring` | `name` | item `name` of the libsecret schema `pl.local.AiPanel.Secret` (GNOME Keyring) |
+| `env` | `name` | environment variable of the app |
+| `command` | `cmd`, `timeout_s` (default 10) | stdout of `cmd` without trailing newlines; run without a shell (`shlex.split`), stdin closed, stderr discarded |
+| `prompt` | `label` | asked when needed (CLI: hidden input on a terminal; without a terminal it is an error "wymaga interakcji") |
+| `literal` | `value` | the value written in the file |
+
+A source without a value (unset variable, no keyring item, cancelled prompt) is not an error:
+the variable is left out of the agent's environment and the log names the variable (never the
+value). A failing command is an error with the program name and exit code only. Resolved
+secrets are replaced with `[redacted]` in the log.
+
+Keyring commands (exit code 0 on success; 1 on error, for a missing item and for `has` when
+the item does not exist):
+
+```bash
+printf '%s' 'sk-…' | make cli ARGS="secret set anthropic"   # value from stdin (hidden prompt on a TTY)
+make cli ARGS="secret has anthropic"
+make cli ARGS="secret delete anthropic"
+```
+
+The keyring is used only when the Secret Service (`org.freedesktop.secrets`, e.g.
+gnome-keyring) is already running on the session bus; the app never starts it through D-Bus
+activation. Without it the commands print `błąd: brak usługi Secret Service …` and exit 1.
+
+Paths: `~` and `$VARIABLES` are expanded in `cwd`, `chat.history_dir`, in `command` when it
+contains a `/`, and in `args` items starting with `~`, `./` or `../`. Relative paths are
+resolved against the directory of the configuration file. A bare command such as `kiro-cli`
+is looked up in `PATH` when the agent starts.
+
+## Chatting from the terminal
+
+```bash
+make cli ARGS="test-agent ID"                     # start, initialize, session/new, stop
+make cli ARGS="chat ID 'prompt'"                  # one turn, streamed to stdout
+make cli ARGS="chat ID 'prompt' --json"           # JSON Lines, one event per line
+make cli ARGS="chat ID 'prompt' --permission allow --cancel-after 5"
+```
+
+`test-agent` prints the agent name and version, `protokół: 1` and the login methods the agent
+offers, then `OK: …` (exit 0) or `Test połączenia nie powiódł się: …` with a hint (exit 2):
+missing command, unsupported protocol version, login required (with the agent's methods),
+timeout (`startup_timeout_s`) or a crash with the last stderr lines.
+
+`chat` streams the reply text as it arrives. Thinking, tool calls, permission requests, usage
+and session options are separate lines prefixed with `[thinking]`, `[tool]`, `[permission]`,
+`[usage]`, `[options]`; a stop reason other than `end_turn` is printed as `[done] <reason>`;
+errors go to stderr as `błąd: …`. Permission requests are rejected by default and the line
+says so; `--permission allow` picks the agent's "allow once" option. `--cancel-after S` sends
+`session/cancel` after S seconds (the turn ends with `cancelled`). With `--json` every line is
+one event (`{"type": "text_delta", "text": …}`, `tool_call`, `permission_request`, …, plus
+`{"type": "permission_response", "request_id", "option_id", "allowed"}` after each answer); the
+last line is `{"type": "done", "stop_reason": …}` or `{"type": "error", …}`.
+
+Exit codes of both commands: 0 = success (`chat`: the turn ended, also when cancelled), 2 =
+agent error, unknown agent ID (the available IDs are listed on stderr) or an agent type that is
+not supported yet (`api`), 130 = Ctrl+C. Through `make` a failure always shows as exit code 2
+of `make`; use `.venv/bin/python -m app.cli …` for the exact code. Both commands append to the
+log file; on stderr they show only log errors unless `AI_PANEL_LOG_LEVEL` is set.
+
+`tests/data/config_fake.toml` defines one agent per scenario of the fake ACP agent
+(`fake-echo`, `fake-thinking`, `fake-tool`, `fake-perm`, `fake-slow`, `fake-crash`,
+`fake-crash-once`, `fake-badver`, `fake-auth`, `fake-noise`, `fake-models`, `fake-load`,
+`fake-usage`, `fake-image`, `fake-env`) plus `fake-missing` (`command = "/nonexistent/agent"`).
+The agents work in `~/.cache/gnome-ai-panel-fake/<scenario>`; `fake-crash-once` crashes only
+on the first prompt after its marker file there is removed.
+
+```bash
+AI_PANEL_CONFIG=tests/data/config_fake.toml make cli ARGS="chat fake-echo 'Cześć'"
+AI_PANEL_CONFIG=tests/data/config_fake.toml make cli ARGS="chat fake-env SECRET_VAR"  # s3cr3t-value
+```
+
 ## Development
 
 | Command | What it does |
@@ -86,15 +192,28 @@ worker-thread fallback from the plan is not needed.
 | `make run` | starts the app in the background on the current session |
 | `make run-headless` | starts the app on a private Xvfb display and D-Bus bus with isolated `HOME`/`XDG_*` |
 | `make stop` | stops what `make run` / `make run-headless` started |
+| `make cli ARGS="…"` | runs `python -m app.cli …` (`check-config`, `agents`, `secret`, `chat`, `test-agent`) |
 
 Tests never touch your real `~/.config`, keyring or session bus: the `isolated_env` fixture
 redirects `HOME` and `XDG_*` into a temporary directory and `make test-py` runs inside
 `dbus-run-session` with a temporary `XDG_RUNTIME_DIR` and `GIO_USE_VFS=local`. Integration
 tests (`tests/integration/`, marker `gui`) start `python -m app` as a subprocess on a private
 bus of their own (`app_process` fixture) and drive it with `gapplication`/`gdbus`; the tests of
-the run scripts set `AI_PANEL_RUN_DIR` so your `.run/` and a running instance are left alone.
+the run scripts set `AI_PANEL_RUN_DIR` so your `.run/` and a running instance are left alone. The
+keyring tests (`tests/integration/test_libsecret.py`) start their own `dbus-daemon` and an
+unlocked `gnome-keyring-daemon` with keyring files under the test's temporary directory; they
+are skipped when `gnome-keyring-daemon` is missing or does not start.
 
 Environment variables used by the app and tests are listed in `.env.example`.
+
+`tests/fakes/fake_acp_agent.py --scenario NAME [--record FILE]` is a stand-alone fake ACP agent
+(stdlib only) used by the tests; the scenarios are listed in its docstring. Try it with:
+
+```bash
+printf '%s\n' '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":1}}' \
+    | .venv/bin/python tests/fakes/fake_acp_agent.py --scenario echo
+```
+
 Playwright browser: when `PW_BROWSER` is unset, `make test-ui` runs `scripts/pick-browser.mjs`,
 which tries to launch WebKit (the engine closest to WebKitGTK). If WebKit cannot start, it
 prints `test-ui: Playwright WebKit cannot launch on this machine, falling back to chromium.`

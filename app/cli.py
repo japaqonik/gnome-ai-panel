@@ -2,8 +2,12 @@
 
 Commands so far: ``check-config [--config P]``, ``agents [--json]``,
 ``secret set|delete|has NAME``, ``chat ID PROMPT [--json] [--permission deny|allow]
-[--cancel-after S]`` and ``test-agent ID``. No GTK import (``gi`` is loaded only when a
-keyring value is needed).
+[--cancel-after S]``, ``test-agent ID`` and ``ui-dump``. No GTK import (``gi`` is loaded only
+when a keyring value is needed and by ``ui-dump`` for D-Bus).
+
+``ui-dump`` activates the ``debug-dump`` action of the running app (``AI_PANEL_DEBUG=1``) on
+the session bus, waits until the app replaced the dump file and prints it; exit 1 when the
+action cannot be called or no dump arrives within 5 s.
 
 Exit codes of ``chat`` and ``test-agent``: 0 = the turn ended with ``Done`` / the test
 passed, 2 = agent error, unknown agent ID or unsupported agent type, 130 = Ctrl+C.
@@ -26,11 +30,12 @@ import math
 import os
 import re
 import sys
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, TextIO
 
-from app import diagnostics, strings
+from app import debug, diagnostics, strings
 from app.backends import close_all, get_backend
 from app.backends.base import (
     Backend,
@@ -55,6 +60,11 @@ from app.secrets import InteractionRequired, LibsecretStore, SecretError, Secret
 EXIT_AGENT_ERROR = 2
 EXIT_INTERRUPTED = 130
 TOOL_SNIPPET_LIMIT = 200
+
+APP_ID = "pl.local.AiPanel"
+APP_OBJECT_PATH = "/pl/local/AiPanel"
+UI_DUMP_TIMEOUT_S = 5.0
+DBUS_CALL_TIMEOUT_MS = 5000
 
 SECRET_VALUE_LIMIT = 64 * 1024
 _SECRET_NAME_RE = re.compile(r"[^\x00-\x1f\x7f]{1,256}")
@@ -486,6 +496,68 @@ def cmd_test_agent(args: argparse.Namespace) -> int:
     return 0 if result.ok else EXIT_AGENT_ERROR
 
 
+def activate_app_action(name: str) -> None:
+    """Activate the parameterless action ``name`` of the running app over the session bus.
+
+    Raises ``RuntimeError`` with the D-Bus error text. The app is never D-Bus-activated.
+    """
+    import gi
+
+    gi.require_version("Gio", "2.0")
+    from gi.repository import Gio, GLib
+
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        bus.call_sync(
+            APP_ID,
+            APP_OBJECT_PATH,
+            "org.gtk.Actions",
+            "Activate",
+            GLib.Variant("(sava{sv})", (name, [], {})),
+            None,
+            Gio.DBusCallFlags.NO_AUTO_START,
+            DBUS_CALL_TIMEOUT_MS,
+            None,
+        )
+    except GLib.Error as exc:
+        raise RuntimeError(exc.message) from None
+
+
+def _file_stamp(path: Path) -> tuple[int, int, int] | None:
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_ino, st.st_mtime_ns, st.st_size)
+
+
+def cmd_ui_dump(args: argparse.Namespace) -> int:
+    path = debug.dump_path()
+    before = _file_stamp(path)
+    try:
+        activate_app_action("debug-dump")
+    except RuntimeError as exc:
+        print_error(strings.CLI_UI_DUMP_NO_APP.format(reason=exc))
+        return 1
+    deadline = time.monotonic() + args.timeout
+    while True:
+        stamp = _file_stamp(path)
+        # The app replaces the file atomically, so a new stamp means a complete new dump.
+        if stamp is not None and stamp != before:
+            try:
+                text = path.read_text(encoding="utf-8")
+                json.loads(text)
+            except (OSError, ValueError):
+                pass
+            else:
+                sys.stdout.write(text if text.endswith("\n") else text + "\n")
+                return 0
+        if time.monotonic() >= deadline:
+            print_error(strings.CLI_UI_DUMP_TIMEOUT.format(file=path, seconds=args.timeout))
+            return 1
+        time.sleep(0.05)
+
+
 def seconds(value: str) -> float:
     try:
         number = float(value)
@@ -538,6 +610,9 @@ def build_parser() -> argparse.ArgumentParser:
     test = sub.add_parser("test-agent", help=strings.CLI_HELP_TEST_AGENT)
     test.add_argument("agent_id", metavar="ID", help=strings.CLI_HELP_AGENT_ID)
     test.set_defaults(func=cmd_test_agent)
+
+    ui_dump = sub.add_parser("ui-dump", help=strings.CLI_HELP_UI_DUMP)
+    ui_dump.set_defaults(func=cmd_ui_dump, timeout=UI_DUMP_TIMEOUT_S)
     return parser
 
 

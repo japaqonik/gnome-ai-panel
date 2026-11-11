@@ -121,7 +121,7 @@ Value: Użytkownik wpisuje dowolnego agenta ACP (np. `kiro-cli acp`) do `config.
 Value: Użytkownik pisze w oknie panelu i dostaje strumieniową odpowiedź skonfigurowanego agenta z markdownem, tabelami, podświetlonym kodem i przyciskiem kopiowania; linki otwierają się w przeglądarce, motyw zgadza się z systemem.
 
 ### S3-T1: Biblioteki JS i renderowanie markdown
-- Status: [ ]
+- Status: [x]
 - Depends on: S1-T3
 - Requirements: FR-4, FR-5, FR-6
 - Scope: `scripts/vendor.mjs` + cel `make vendor`; pliki w `app/ui/vendor/` (`marked.esm.js` lub UMD, `highlight.min.js` z popularnymi językami, `github.min.css` i `github-dark.min.css`, `purify.min.js`) wraz z plikami licencji; `app/ui/render.js`: `renderMarkdown(text) -> string` (marked GFM → DOMPurify z zakazem `style`, `on*`, `iframe`, `form`; linki dostają `rel="noopener noreferrer"` i `data-external`), `enhanceCodeBlocks(container)` (highlight.js + przycisk „Kopiuj" `aria-label="Kopiuj kod"` korzystający z `navigator.clipboard`, zmiana etykiety na „Skopiowano" na 1,5 s); `tests/ui/render.spec.mjs`.
@@ -132,7 +132,7 @@ Value: Użytkownik pisze w oknie panelu i dostaje strumieniową odpowiedź skonf
 - Tests: Playwright: lista, tabela GFM (element `table` z 2 wierszami), blok ```python ma klasę `hljs` i przycisk kopiowania; kliknięcie kopiuje treść (`context.grantPermissions(['clipboard-read','clipboard-write'])`); XSS: `<img src=x onerror=alert(1)>`, `<script>`, `[a](javascript:alert(1))` → brak skryptu i atrybutów `on*`, brak `href="javascript:`; 100 KB markdown renderuje się w ≤ 2 s.
 
 ### S3-T2: Interakcje czatu w UI (atrapa mostu)
-- Status: [ ]
+- Status: [x]
 - Depends on: S3-T1
 - Requirements: FR-7, FR-8
 - Scope: `app/ui/chat.js` + zmiany `index.html`/`app.js`/`style.css`/`strings.js`: układ (nagłówek, lista wiadomości `aria-live="polite"`, pole `textarea#prompt` auto-rozszerzane do 8 linii, przycisk `#send`/`#stop`), Enter wysyła (`{type:"send",text}`), Shift+Enter nowa linia, pusty prompt nie wysyła, w trakcie tury przycisk stop (`{type:"cancel"}`) i blokada wysyłania; obsługa `dispatch`: `init`, `turn_start`, `text_delta` (dopisywanie do bufora i render throttlowany `requestAnimationFrame`), `done` (koniec tury; `cancelled` → znacznik „Przerwano"), `error` (dymek błędu z `kind`); ekran pusty gdy `init.agents` puste; przewijanie do dołu, chyba że użytkownik przewinął w górę.
@@ -142,7 +142,7 @@ Value: Użytkownik pisze w oknie panelu i dostaje strumieniową odpowiedź skonf
 - Tests: Playwright: Enter → mostek dostał `send`; Shift+Enter → nowa linia, brak `send`; 50 delt `text_delta` → jedna wiadomość asystenta z pełnym tekstem; podczas tury `#stop` widoczny, `#send` ukryty, Enter nie wysyła; klik stop → `cancel`; `done` przywraca `#send`; `error` pokazuje komunikat; `init` z pustymi agentami → `#empty-state`.
 
 ### S3-T3: Controller i połączenie mostu z backendem
-- Status: [ ]
+- Status: [x]
 - Depends on: S2-T4, S3-T2
 - Requirements: FR-3, FR-23
 - Scope: `app/controller.py`: `ChatController(config, ui_sink, backend_factory)` – wybór agenta (`default_agent` lub pierwszy poprawny; brak → `init` z pustą listą), utrzymanie bieżącej rozmowy (lista wiadomości w pamięci), obsługa `send` (tworzy sesję leniwie, iteruje zdarzenia backendu, wysyła do UI `turn_start`/`text_delta`/`done`/`error`), `cancel`, `new_chat` (nowa sesja), błędy konfiguracji w `init.config_errors`; `app/bridge.py`: parsowanie wiadomości JS (walidacja typu i pól, nieznane → log WARNING), `dispatch` przez `evaluate_javascript("window.aiPanel.dispatch(" + json.dumps(obj) + ")")`; `main.py`: akcja `new-chat` podłączona; konfiguracja czytana przy starcie z `AI_PANEL_CONFIG`/XDG; zmienna `AI_PANEL_DEFAULT_AGENT` nadpisuje `default_agent` (dla testów i UAT).
@@ -151,7 +151,7 @@ Value: Użytkownik pisze w oknie panelu i dostaje strumieniową odpowiedź skonf
 - Tests: unit z `FakeBackend` (skrypt zdarzeń) i listą jako `UiSink`: kolejność dispatchy dla tury; `send` podczas trwającej tury odrzucony; `cancel` wywołuje `backend.cancel`; Error backendu → `error` w UI i możliwość kolejnej tury; brak agentów → `init.agents == []`; `new_chat` → nowe `new_session`; bridge: wiadomość bez `type` ignorowana; `json.dumps` z `</script>` i `\u2028` bezpieczne.
 
 ### S3-T4: Akcje debug, polityka linków, motyw i test E2E okna
-- Status: [ ]
+- Status: [x]
 - Depends on: S3-T3
 - Requirements: FR-8, FR-13, FR-14
 - Scope: akcje `debug-send`, `debug-click`, `debug-dump` rejestrowane tylko przy `AI_PANEL_DEBUG=1` (PLAN §12.1), zrzut stanu UI zbierany w JS (`dump`) i zapisywany przez Pythona; CLI `ui-dump`; `window.py`: `decide-policy` – nawigacja głównej ramki tylko do `app/ui/index.html`, linki (`data-external` i każde inne) → `Gtk.UriLauncher`/`Gio.AppInfo.launch_default_for_uri` (tylko `http`, `https`, `mailto`), nowe okna blokowane, menu kontekstowe bez „Reload"/„Inspect" poza debug; motyw: `Adw.StyleManager.dark` + `chat.theme` → `init.theme` i aktualizacja przy zmianie; `chat.font_size` → zmienna CSS. Test GUI e2e.

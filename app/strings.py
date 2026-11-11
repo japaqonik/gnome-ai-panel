@@ -112,6 +112,12 @@ CLI_SKIPPED_AGENT = (
 )
 CLI_UNSUPPORTED_AGENT_TYPE = "agenci typu „{type}” nie są jeszcze obsługiwani w tej wersji."
 CLI_INTERRUPTED = "przerwano."
+CLI_HELP_UI_DUMP = "zrzut stanu okna (akcja debug-dump; aplikacja uruchomiona z AI_PANEL_DEBUG=1)"
+CLI_UI_DUMP_NO_APP = (
+    "nie można wywołać akcji debug-dump: {reason} (czy aplikacja działa z AI_PANEL_DEBUG=1, "
+    "np. make run-headless, i czy wczytano .run/headless.env?)"
+)
+CLI_UI_DUMP_TIMEOUT = "aplikacja nie zapisała zrzutu {file} w ciągu {seconds:g} s"
 CLI_PERMISSION_DENIED = "{title} → odrzucono (domyślnie; --permission allow zezwala)"
 CLI_PERMISSION_DENIED_NO_ALLOW = "{title} → odrzucono (agent nie podał opcji zezwolenia)"
 CLI_PERMISSION_ALLOWED = "{title} → zezwolono ({option})"
@@ -172,3 +178,12 @@ ACP_SESSION_LOST = "Sesja agenta została utracona, bo jego proces zakończył d
 ACP_UNKNOWN_SESSION = "Nieznana sesja: {session_id}"
 ACP_TURN_RUNNING = "W tej sesji trwa już tura"
 ACP_CLOSED = "Połączenie z agentem zostało zamknięte"
+
+# -- chat controller (app/controller.py) and bridge (app/bridge.py) -----------------------
+CTRL_TURN_RUNNING = "Poprzednia odpowiedź jeszcze trwa. Poczekaj na nią albo ją przerwij."
+CTRL_NO_AGENT = "Brak skonfigurowanego agenta. Dodaj agenta w pliku konfiguracji."
+CTRL_AGENT_UNSUPPORTED = "Agent „{name}” typu „{type}” nie jest jeszcze obsługiwany."
+CTRL_EMPTY_PROMPT = "Wiadomość jest pusta."
+CTRL_INVALID_MESSAGE = "Nieprawidłowa wiadomość z interfejsu."
+CTRL_UNEXPECTED = "Nieoczekiwany błąd. Szczegóły są w dzienniku aplikacji."
+CTRL_TURN_ENDED = "Tura zakończyła się bez odpowiedzi agenta."

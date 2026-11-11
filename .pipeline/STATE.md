@@ -2,7 +2,7 @@
 status: running
 spec: /home/rpac/Dev/gnome-ai-panel/gnome-ai-panel.md
 remote: https://github.com/japaqonik/gnome-ai-panel
-current: S2-git
+current: S3-git
 counters: test_loops=4 fix_cycles=0 git_rejects=0
 
 ## History
@@ -22,3 +22,9 @@ counters: test_loops=4 fix_cycles=0 git_rejects=0
 - 2026-11-11T20:20:00+01:00 S2-T4 PASS (attempts: 1); integration tests 5.95 s; non-blocking: MCP commands looked up in app PATH (not agent env PATH); send() after close() reports kind `crashed`
 - 2026-11-11T21:10:00+01:00 S2-T5 PASS (attempts: 2); fixed: --cancel-after 0 race (CLI + fake agent); open (non-blocking): app.log created 0664 (logging_setup, S1); interrupted --json run has no final done line; configOptions from session/new not printed; leftover ~/.cache/gnome-ai-panel-fake in real HOME (user may remove)
 - 2026-11-11T21:50:00+01:00 S2 UAT PASS (S2-uat-1); UAT-S2-5 passed with real kiro-cli 2.26.0; note: UAT wrote+deleted test-x item in user's real keyring (HOME isolation does not isolate keyring); 8 old /tmp/ai-panel-test-runtime.* dirs remain
+- 2026-11-11T22:05:00+01:00 S2 committed fa15568 (feat(s2): add config loading and terminal ACP client), pushed to origin/main
+- 2026-11-11T22:45:00+01:00 S3-T1 PASS (attempts: 1); deviation: highlight.js vendored from @highlightjs/cdn-assets@11.12.0 (npm, prebuilt); note for S3-T4: relative links also get data-external
+- 2026-11-11T23:30:00+01:00 S3-T2 PASS (attempts: 1); contract for S3-T3: every `send` must get `done`/`error` (also when rejected), no `text_delta` after `done`, repeated `cancel` idempotent; a11y note: live region re-read per frame
+- 2026-11-12T00:20:00+01:00 S3-T3 PASS (attempts: 1); tester fixed race in test helper process_gone() (test_acp_backend_edge.py); open: send() catches only NotImplementedError from backend factory; agent ignoring session/cancel never ends turn (S4-T3 timeout); _alive race in test_run_scripts.py
+- 2026-11-12T01:15:00+01:00 S3-T4 PASS (attempts: 1); deviation: debug-action absence checked via gdbus org.gtk.Actions.List (list-actions needs .desktop, S6); dump has extra `busy`, `uri`; thinking/tools/permission_dialog/banner placeholders until S4; non-blocking: links.is_external accepts leading-space URI
+- 2026-11-12T02:00:00+01:00 S3 UAT PASS (S3-uat-1); manual pending: UAT-S1-4 + visual check of chat on real desktop

@@ -8,12 +8,17 @@ speaking the [Agent Client Protocol](https://agentclientprotocol.com) (e.g. `kir
   background and controlled through D-Bus actions,
 - a GNOME Shell extension that docks the window to a screen edge and toggles it with a shortcut.
 
-Status: early development (stage S2). The application starts, shows an empty chat page and
-answers the D-Bus actions below; the window cannot talk to agents yet. The configuration file
-is read and validated by the CLI, and secrets can be stored in the keyring (see Configuration).
+Status: early development (stage S3). The application reads the configuration at start, shows
+the chat page and answers the D-Bus actions below. A prompt typed in the window is sent to the
+chosen agent and the reply streams in as markdown; the stop button cancels the turn and the
+`new-chat` action starts a new conversation. Links in replies open in the default browser;
+the panel itself never navigates away. The page follows `chat.theme` and `chat.font_size`.
+Thinking, tool calls and permission dialogs are not shown yet (permission requests are
+rejected). The configuration file is read and
+validated by the CLI, and secrets can be stored in the keyring (see Configuration).
 The ACP client (`app/backends/acp.py`, one process per agent, restarted after a crash at most
-3 times per 60 s) works from the terminal: `chat` runs one turn with any configured agent and
-`test-agent` checks the connection (see Chatting from the terminal).
+3 times per 60 s) also works from the terminal: `chat` runs one turn with any configured agent
+and `test-agent` checks the connection (see Chatting from the terminal).
 
 ## System requirements
 
@@ -67,6 +72,45 @@ from which you send actions. `make stop` sends `quit`, sends SIGTERM after 3 s (
 3 s more) to the processes recorded in `.run/*.pid`, and removes the pid files, `headless.env`
 and the runtime directory. It only signals processes whose command line matches what was
 started.
+
+The window talks to the agent chosen at start: `AI_PANEL_DEFAULT_AGENT` (agent id) if it
+names a valid agent, otherwise `default_agent` from the configuration, otherwise the first valid
+agent. Without agents the window shows the empty "add an agent" screen. The agent process starts
+with the first prompt and keeps its session until `new-chat`; `quit` (and SIGTERM) stops it
+(SIGTERM, SIGKILL after 3 s). Try it with the fake agents:
+
+```bash
+AI_PANEL_CONFIG=$PWD/tests/data/config_fake.toml AI_PANEL_DEFAULT_AGENT=fake-slow make run-headless
+```
+
+Debug actions exist only when the app starts with `AI_PANEL_DEBUG=1` (`make run-headless`
+sets it): `debug-send` types a prompt into the page and sends it the way Enter does (nothing is
+sent while a turn runs), `debug-click` clicks the first element matching a CSS selector, and
+`debug-dump` writes the page state to `$XDG_STATE_HOME/gnome-ai-panel/debug-dump.json` (mode
+0600; format in PLAN §12.1, plus `busy` and the web view `uri`). `make cli ARGS="ui-dump"`
+activates `debug-dump`, waits up to 5 s for the new file and prints it (exit 1 when the app is
+not running with debug actions or no dump arrives):
+
+```bash
+AI_PANEL_CONFIG=$PWD/tests/data/config_fake.toml make run-headless && source .run/headless.env
+gapplication action pl.local.AiPanel debug-send "'md: tabela'"
+gapplication action pl.local.AiPanel debug-click "'a[data-external]'"
+make -s cli ARGS="ui-dump"
+```
+
+`gapplication list-actions` needs an installed `.desktop` file (stage S6); until then list the
+actions with `gdbus call --session -d pl.local.AiPanel -o /pl/local/AiPanel -m
+org.gtk.Actions.List`.
+
+Links: the web view only shows `app/ui/index.html`. A click on an `http`, `https` or `mailto`
+link opens it with `Gtk.UriLauncher`; any other target (relative paths, `file:`, `data:` …) is
+blocked, and so are new windows. With `AI_PANEL_URI_LOG=/path/file` the URIs are appended to
+that file instead of being opened (tests). The context menu has no navigation, download or
+new-window entries; "Reload" and "Inspect Element" appear only with `AI_PANEL_DEBUG=1`.
+
+Theme: `chat.theme = "light"` or `"dark"` forces the scheme of the window and the page;
+`"system"` follows GNOME (`Adw.StyleManager`) and the page switches when the desktop does.
+`chat.font_size` sets the base font size of the page in px.
 
 Only one instance runs; starting it again activates the running one. Closing the window hides
 it, only the `quit` action (or SIGTERM) ends the process. Logs go to stderr and to
@@ -192,7 +236,8 @@ AI_PANEL_CONFIG=tests/data/config_fake.toml make cli ARGS="chat fake-env SECRET_
 | `make run` | starts the app in the background on the current session |
 | `make run-headless` | starts the app on a private Xvfb display and D-Bus bus with isolated `HOME`/`XDG_*` |
 | `make stop` | stops what `make run` / `make run-headless` started |
-| `make cli ARGS="…"` | runs `python -m app.cli …` (`check-config`, `agents`, `secret`, `chat`, `test-agent`) |
+| `make vendor` | copies marked, DOMPurify and highlight.js (with the GitHub light/dark styles) from `node_modules` into `app/ui/vendor/` |
+| `make cli ARGS="…"` | runs `python -m app.cli …` (`check-config`, `agents`, `secret`, `chat`, `test-agent`, `ui-dump`) |
 
 Tests never touch your real `~/.config`, keyring or session bus: the `isolated_env` fixture
 redirects `HOME` and `XDG_*` into a temporary directory and `make test-py` runs inside
@@ -203,6 +248,30 @@ the run scripts set `AI_PANEL_RUN_DIR` so your `.run/` and a running instance ar
 keyring tests (`tests/integration/test_libsecret.py`) start their own `dbus-daemon` and an
 unlocked `gnome-keyring-daemon` with keyring files under the test's temporary directory; they
 are skipped when `gnome-keyring-daemon` is missing or does not start.
+
+The chat page uses only local files. `app/ui/vendor/` is committed and holds unmodified copies
+of `marked` (`lib/marked.umd.js`), `dompurify` (`dist/purify.min.js`) and
+`@highlightjs/cdn-assets` (the prebuilt `highlight.min.js` with the common languages,
+`styles/github.min.css`, `styles/github-dark.min.css`), their license files and `vendor.json`
+(versions and SHA-256 of every file). The versions come from `package-lock.json`. To update
+a library, change its version in `package.json`, run `npm install` and `make vendor`, and commit
+the result. `make vendor` stops with an error when `node_modules` does not match the lock file
+(run `npm ci` first) and removes vendored files that are no longer listed in
+`scripts/vendor.mjs`. `app/ui/render.js` turns markdown into sanitised HTML
+(`window.aiPanelRender.renderMarkdown`) and adds highlighting and a copy button to code blocks
+(`enhanceCodeBlocks`). `app/ui/chat.js` holds the chat screen: the message list, the prompt
+(Enter sends `{type: "send", text}`, Shift+Enter adds a line, the field grows up to 8 lines),
+the stop button (`{type: "cancel"}`) and the handlers of `init`, `turn_start`, `text_delta`
+(rendered at most once per animation frame), `done` and `error` that Python calls through
+`window.aiPanel.dispatch(obj)`, plus `conversation` (clears the list on `new-chat`);
+`tests/ui/chat.spec.mjs` drives them with the mock bridge. On the Python side `app/bridge.py`
+checks the fields of every page message (an invalid `send` is answered with `error`, other
+invalid or unknown messages are logged as warnings and dropped) and dispatches events with
+`evaluate_javascript`, the JSON escaped so that `</script>` and U+2028 cannot break out.
+`app/controller.py` (`ChatController`, no GTK) keeps the conversation in memory, creates the
+agent session at the first prompt and answers every `send` with exactly one `done` or `error`
+(also when it is rejected because a turn is running or there is no agent); nothing of a turn is
+dispatched after its `done`/`error`, and repeated `cancel` messages count as one.
 
 Environment variables used by the app and tests are listed in `.env.example`.
 

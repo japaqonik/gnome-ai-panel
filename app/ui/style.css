@@ -5,12 +5,31 @@
     --muted: #5e5c64;
     --accent-bg: #3584e4;
     --accent-fg: #ffffff;
+    --danger-bg: #e01b24;
+    --danger-fg: #ffffff;
+    --border: color-mix(in srgb, var(--fg) 15%, transparent);
+    --user-bg: color-mix(in srgb, var(--accent-bg) 14%, transparent);
+    --error-bg: color-mix(in srgb, var(--danger-bg) 12%, transparent);
     font-family: system-ui, "Cantarell", sans-serif;
-    font-size: 14px;
+    /* --font-size is set from chat.font_size (chat.js). */
+    font-size: var(--font-size, 14px);
+}
+
+/* data-theme on <html> comes from init.theme; without it the page follows the browser. */
+:root[data-theme="light"] {
+    color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #222226;
+    --fg: #f6f5f4;
+    --muted: #c0bfbc;
+    --accent-bg: #1c71d8;
 }
 
 @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme]) {
         --bg: #222226;
         --fg: #f6f5f4;
         --muted: #c0bfbc;
@@ -20,6 +39,11 @@
 
 * {
     box-sizing: border-box;
+}
+
+/* Author display rules (e.g. .empty-state { display: flex }) must not defeat `hidden`. */
+[hidden] {
+    display: none !important;
 }
 
 html,
@@ -67,7 +91,200 @@ body {
     color: var(--accent-fg);
 }
 
+.button--danger {
+    background: var(--danger-bg);
+    color: var(--danger-fg);
+}
+
 .button:focus-visible {
     outline: 2px solid var(--accent-bg);
     outline-offset: 2px;
+}
+
+/* Chat screen (chat.js). */
+.chat {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+}
+
+.chat-header__agent {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+}
+
+.messages:focus-visible {
+    outline: 2px solid var(--accent-bg);
+    outline-offset: -2px;
+}
+
+.message {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+}
+
+.message--user {
+    align-self: flex-end;
+    max-width: 85%;
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: var(--user-bg);
+}
+
+.message--user .message__body {
+    white-space: pre-wrap;
+}
+
+.message--assistant .message__body > :first-child {
+    margin-top: 0;
+}
+
+.message--assistant .message__body > :last-child {
+    margin-bottom: 0;
+}
+
+.message__body table {
+    border-collapse: collapse;
+    display: block;
+    overflow-x: auto;
+}
+
+.message__body th,
+.message__body td {
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+}
+
+.message--error {
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--danger-bg) 45%, transparent);
+    background: var(--error-bg);
+}
+
+.message__title {
+    display: block;
+}
+
+.message__text {
+    margin: 4px 0 0;
+    white-space: pre-wrap;
+}
+
+.message__status {
+    margin: 6px 0 0;
+    font-size: 0.85em;
+    font-style: italic;
+    color: var(--muted);
+}
+
+.composer {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 8px 12px 12px;
+    border-top: 1px solid var(--border);
+}
+
+.composer__prompt {
+    flex: 1;
+    min-width: 0;
+    resize: none;
+    overflow-y: hidden;
+    font: inherit;
+    line-height: 20px;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+}
+
+.composer__prompt:focus-visible {
+    outline: 2px solid var(--accent-bg);
+    outline-offset: -1px;
+}
+
+.composer__button {
+    flex: none;
+}
+
+/* Rendered markdown (render.js). */
+.code-block {
+    margin: 8px 0;
+    border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.code-block__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 2px 4px 2px 10px;
+    font-size: 0.85em;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+
+.code-block__copy {
+    font: inherit;
+    padding: 2px 8px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+
+.code-block__copy:hover {
+    background: color-mix(in srgb, var(--fg) 10%, transparent);
+}
+
+.code-block__copy:focus-visible {
+    outline: 2px solid var(--accent-bg);
+    outline-offset: 1px;
+}
+
+.code-block pre {
+    margin: 0;
+}
+
+.code-block pre code.hljs {
+    display: block;
+    overflow-x: auto;
+    padding: 10px 12px;
+    font-family: ui-monospace, "Source Code Pro", monospace;
+    font-size: 0.9em;
+}
+
+/* Off-screen buffer for the legacy copy fallback. */
+.clipboard-buffer {
+    position: fixed;
+    top: -1000px;
+    left: -1000px;
+    opacity: 0;
 }

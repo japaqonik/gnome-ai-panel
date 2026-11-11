@@ -37,7 +37,8 @@ def process_gone(pid: int) -> bool:
     try:
         with open(f"/proc/{pid}/stat") as f:
             return f.read().split(") ", 1)[1].startswith("Z")
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
+        # Reading /proc/<pid>/stat of a process reaped in the meantime fails with ESRCH.
         return True
 
 

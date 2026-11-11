@@ -7,7 +7,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>AI Panel</title>
+  <link rel="stylesheet" href="vendor/github.min.css" id="hljs-theme-light">
+  <link rel="stylesheet" href="vendor/github-dark.min.css" id="hljs-theme-dark"
+        media="(prefers-color-scheme: dark)">
   <link rel="stylesheet" href="style.css">
+  <script src="vendor/marked.umd.js" defer></script>
+  <script src="vendor/purify.min.js" defer></script>
+  <script src="vendor/highlight.min.js" defer></script>
+  <script src="strings.js" defer></script>
+  <script src="render.js" defer></script>
+  <script src="chat.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -15,6 +24,19 @@
     <section id="empty-state" class="empty-state">
       <h1 class="empty-state__title">Brak skonfigurowanych agentów</h1>
       <button type="button" id="add-agent" class="button button--primary">Dodaj agenta</button>
+    </section>
+    <section id="chat" class="chat" hidden>
+      <header class="chat-header">
+        <span id="agent-name" class="chat-header__agent"></span>
+      </header>
+      <div id="messages" class="messages" role="log" aria-live="polite" aria-busy="false"
+           tabindex="0"></div>
+      <form id="composer" class="composer">
+        <textarea id="prompt" class="composer__prompt" rows="1"></textarea>
+        <button type="submit" id="send" class="button button--primary composer__button"></button>
+        <button type="button" id="stop" class="button button--danger composer__button"
+                hidden></button>
+      </form>
     </section>
   </main>
 </body>

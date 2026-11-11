@@ -5,7 +5,7 @@ Usage: fake_acp_agent.py --scenario NAME [--record FILE] [--system-prompt]
 
 Scenarios (PLAN "Commands"):
   echo         "Echo: <prompt>" in 3 agent_message_chunk fragments; a prompt starting with
-               "md:" gets markdown with a table and a code block instead
+               "md:" gets markdown with a table, a code block and a link instead
   thinking     two agent_thought_chunk fragments, then the echo reply
   tool         a thought fragment, tool_call (pending), tool_call_update in_progress and
                completed (with content), then a text reply
@@ -76,6 +76,7 @@ MARKDOWN_REPLY = [
     "## Wynik\n\n| Kolumna | Wartość |\n|---|---|\n",
     "| a | 1 |\n| b | 2 |\n\n",
     "```python\nprint('Echo')\n```\n",
+    "Więcej: [przykład](https://example.com/)\n",
 ]
 SLOW_INTERVAL_S = 0.2
 SLOW_DURATION_S = 10.0

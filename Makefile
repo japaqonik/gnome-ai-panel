@@ -94,4 +94,4 @@ uninstall:
 	$(not_implemented)
 
 vendor:
-	$(not_implemented)
+	node scripts/vendor.mjs

@@ -16,6 +16,7 @@
   <script src="vendor/highlight.min.js" defer></script>
   <script src="strings.js" defer></script>
   <script src="render.js" defer></script>
+  <script src="permission.js" defer></script>
   <script src="chat.js" defer></script>
   <script src="app.js" defer></script>
 </head>
@@ -27,7 +28,9 @@
     </section>
     <section id="chat" class="chat" hidden>
       <header class="chat-header">
-        <span id="agent-name" class="chat-header__agent"></span>
+        <select id="agent" class="chat-header__select chat-header__agent"></select>
+        <select id="model" class="chat-header__select chat-header__model" hidden></select>
+        <span id="mode-badge" class="mode-badge" hidden></span>
       </header>
       <div id="messages" class="messages" role="log" aria-live="polite" aria-busy="false"
            tabindex="0"></div>
@@ -39,5 +42,18 @@
       </form>
     </section>
   </main>
+  <div id="permission-overlay" class="permission-overlay" hidden>
+    <div id="permission-dialog" class="permission" role="dialog" aria-modal="true"
+         aria-labelledby="permission-heading" aria-describedby="permission-title">
+      <h2 id="permission-heading" class="permission__heading"></h2>
+      <p id="permission-title" class="permission__title"></p>
+      <p id="permission-kind" class="permission__kind"></p>
+      <h3 id="permission-input-label" class="permission__label"></h3>
+      <pre id="permission-input" class="permission__input" tabindex="0"
+           aria-labelledby="permission-input-label"></pre>
+      <p id="permission-queue" class="permission__queue" hidden></p>
+      <div id="permission-options" class="permission__options"></div>
+    </div>
+  </div>
 </body>
 </html>

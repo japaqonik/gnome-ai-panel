@@ -144,5 +144,19 @@
         }
     }
 
-    window.aiPanelRender = Object.freeze({renderMarkdown, enhanceCodeBlocks});
+    // A tool's raw_input as text (tool cards, permission dialog): strings as they are,
+    // everything else as indented JSON.
+    function formatInput(value) {
+        if (value === undefined || value === null)
+            return '';
+        if (typeof value === 'string')
+            return value;
+        try {
+            return JSON.stringify(value, null, 2) ?? String(value);
+        } catch {
+            return String(value);
+        }
+    }
+
+    window.aiPanelRender = Object.freeze({renderMarkdown, enhanceCodeBlocks, formatInput});
 })();

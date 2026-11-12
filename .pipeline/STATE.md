@@ -2,8 +2,8 @@
 status: running
 spec: /home/rpac/Dev/gnome-ai-panel/gnome-ai-panel.md
 remote: https://github.com/japaqonik/gnome-ai-panel
-current: S3-git
-counters: test_loops=4 fix_cycles=0 git_rejects=0
+current: S4-git
+counters: test_loops=6 fix_cycles=0 git_rejects=0
 
 ## History
 - 2026-11-10T21:35:28+01:00 planning started
@@ -28,3 +28,10 @@ counters: test_loops=4 fix_cycles=0 git_rejects=0
 - 2026-11-12T00:20:00+01:00 S3-T3 PASS (attempts: 1); tester fixed race in test helper process_gone() (test_acp_backend_edge.py); open: send() catches only NotImplementedError from backend factory; agent ignoring session/cancel never ends turn (S4-T3 timeout); _alive race in test_run_scripts.py
 - 2026-11-12T01:15:00+01:00 S3-T4 PASS (attempts: 1); deviation: debug-action absence checked via gdbus org.gtk.Actions.List (list-actions needs .desktop, S6); dump has extra `busy`, `uri`; thinking/tools/permission_dialog/banner placeholders until S4; non-blocking: links.is_external accepts leading-space URI
 - 2026-11-12T02:00:00+01:00 S3 UAT PASS (S3-uat-1); manual pending: UAT-S1-4 + visual check of chat on real desktop
+- 2026-11-12T02:20:00+01:00 S3 committed 95e13a4 (feat(s3): add chat window), pushed to origin/main
+- 2026-11-12T18:15:03+01:00 resumed at S4-T1 (task was [~], no reports; partial changes may exist)
+- 2026-11-12T18:15:03+01:00 S4-T1 PASS (attempts: 1); kept partial controller changes from interrupted run; dump tools include `id`; non-blocking: controller dispatches empty tool_update {type,id}
+- 2026-11-12T18:15:03+01:00 S4-T2 PASS (attempts: 2); fixed: double click answered next queued request (400 ms pointer-click delay + detail>1 ignored); notes: stop button unreachable while dialog open (documented); non-blocking: buttons not visually inactive during delay; UI tests Chromium-only (WebKit libs missing)
+- 2026-11-12T18:15:03+01:00 S4-T3 PASS (attempts: 1); cancel watchdog 5 s added (fixes S3-T3 open issue); error event extended beyond PLAN §12.2 + new `notice` event; tester fixed race in S3 test test_external_link_goes_to_the_launcher; non-blocking: restart notice repeated on every crash; tool_update after stop can overwrite `cancelled`; abandoned stubborn agent process not killed
+- 2026-11-12T18:15:03+01:00 S4-T4 PASS (attempts: 2); fixed: config_option_update right after session/new lost (on_result callback in jsonrpc.request registers session before next line); tester fixed _wait_file race in test_debug_actions_edge.py (S3 test helper); notes: agent/agents states not refreshed on config reload until S8-T1; model list only after first prompt (lazy session); non-blocking: session registered then new_session cancelled stays in memory; ui-dump lacks model list
+- 2026-11-12T18:15:03+01:00 S4 UAT PASS (S4-uat-1); notes: fake-crash-once marker persists in .run/home between runs (README Try-it lacks rm -f); hidden window delays streamed text render until shown/turn end; debug-click bypasses inert; manual pending: UAT-S1-4, UAT-S2-5, visual S4 pass, model switch on desktop

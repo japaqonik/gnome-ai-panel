@@ -1,0 +1,12 @@
+feat(s4): add full ACP support in the chat UI
+
+The chat shows thinking blocks and tool cards, asks for permission in a modal
+dialog, handles cancel, crashes and errors with cards, and lets the user pick
+the agent and model (mode badge, D-Bus agent/agents actions).
+
+Tasks:
+- S4-T1 Thinking blocks and tool call cards
+- S4-T2 Permission dialog
+- S4-T3 Cancel, crash and error cards
+- S4-T4 Agent and model selection, mode badge, D-Bus agent/agents actions
+UAT: passed (.pipeline/reports/S4-uat-1.md)

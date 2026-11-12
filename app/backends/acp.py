@@ -14,12 +14,15 @@ FR-46, FR-50).
   servers (``env`` as ``[{name, value}]``), ``session_meta`` as ``_meta`` and
   ``system_prompt`` as ``systemPrompt`` (mode ``append``) when the agent advertises
   ``agentCapabilities.sessionCapabilities.systemPrompt``;
+- the session's config options (``configOptions`` of ``session/new``, of the
+  ``session/set_config_option`` answer and of ``config_option_update``) are kept per session:
+  ``config_options(session_id)``; ``set_option()`` returns the complete new list;
 - ``send()`` runs ``session/prompt`` and turns ``session/update`` notifications of that
   session into events (``map_session_update``); ``session/request_permission`` becomes a
   ``PermissionRequest`` answered through ``respond_permission``;
 - when the process ends during a turn, the turn ends with ``Error`` kind ``crashed`` (exit
   code and the last 20 stderr lines); the next ``new_session()`` starts a new process, at most
-  ``RESTART_LIMIT`` times per ``RESTART_WINDOW_S``;
+  ``RESTART_LIMIT`` times per ``RESTART_WINDOW_S`` (beyond that ``RestartLimitError``);
 - ``close()``: SIGTERM, after ``TERM_GRACE_S`` SIGKILL.
 
 Failures of ``start``/``new_session``/``set_option`` raise ``BackendError`` carrying the
@@ -38,7 +41,7 @@ import os
 import shutil
 import signal
 from collections import deque
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -52,6 +55,7 @@ from app.backends.base import (
     Event,
     PermissionOption,
     PermissionRequest,
+    RestartLimitError,
     TextDelta,
     ThinkingDelta,
     ToolCall,
@@ -232,6 +236,21 @@ class _Session:
     id: str
     process: _Process
     turn: _Turn | None = None
+    # ACP SessionConfigOption objects as the agent last reported them.
+    config_options: list[dict[str, Any]] = field(default_factory=list)
+
+
+def _new_session_id(result: Any) -> str | None:
+    """The ``sessionId`` of a ``session/new`` result; ``None`` when it is missing."""
+    session_id = result.get("sessionId") if isinstance(result, dict) else None
+    return session_id if isinstance(session_id, str) and session_id else None
+
+
+def _config_option_list(value: Any) -> list[dict[str, Any]] | None:
+    """The dict entries of a ``configOptions`` value; ``None`` when it is not a list."""
+    if not isinstance(value, list):
+        return None
+    return [option for option in value if isinstance(option, dict)]
 
 
 @dataclass
@@ -315,16 +334,28 @@ class AcpBackend:
             timeout_message=strings.ACP_SESSION_TIMEOUT.format(
                 timeout=self.agent.startup_timeout_s
             ),
+            # Registered by the reader as soon as the answer arrives: a session/update the
+            # agent sends right after it must find the session (new_session resumes later).
+            on_result=lambda result: self._register_session(process, result),
         )
-        session_id = result.get("sessionId") if isinstance(result, dict) else None
-        if not isinstance(session_id, str) or not session_id:
+        session_id = _new_session_id(result)
+        if session_id is None:
             raise BackendError(
                 Error(strings.ACP_BAD_RESPONSE.format(method="session/new"), "protocol")
             )
-        self._sessions[session_id] = _Session(session_id, process)
+        if session_id not in self._sessions:
+            # The process stopped or crashed between the answer and here.
+            raise BackendError(Error(strings.ACP_SESSION_LOST, "crashed"))
+        return session_id
+
+    def _register_session(self, process: _Process, result: Any) -> None:
+        session_id = _new_session_id(result)
+        if session_id is None or self._closed or not process.alive:
+            return
+        options = _config_option_list(result.get("configOptions")) or []
+        self._sessions[session_id] = _Session(session_id, process, config_options=options)
         self._lost_sessions.discard(session_id)
         log.info("%s: session %s created", self.agent.id, session_id)
-        return session_id
 
     async def send(self, session_id: str, prompt: list[ContentPart]) -> AsyncIterator[Event]:
         session = self._sessions.get(session_id)
@@ -389,16 +420,33 @@ class AcpBackend:
         # ACP: pending permission requests of a cancelled turn are answered "cancelled".
         self._cancel_permissions(session_id)
 
-    async def set_option(self, session_id: str, config_id: str, value: str) -> None:
+    def config_options(self, session_id: str) -> list[dict[str, Any]]:
+        session = self._sessions.get(session_id)
+        return list(session.config_options) if session is not None else []
+
+    async def set_option(
+        self, session_id: str, config_id: str, value: str
+    ) -> list[dict[str, Any]] | None:
         session = self._sessions.get(session_id)
         if session is None or not session.process.alive:
             raise BackendError(Error(strings.ACP_SESSION_LOST, "crashed"))
-        await self._request(
+        result = await self._request(
             session.process,
             "session/set_config_option",
             {"sessionId": session_id, "configId": config_id, "value": value},
-            timeout_message=None,
+            timeout_message=strings.ACP_REQUEST_TIMEOUT.format(
+                method="session/set_config_option", timeout=self.agent.startup_timeout_s
+            ),
         )
+        # ACP: the answer carries the complete list of options with their current values.
+        options = _config_option_list(
+            result.get("configOptions") if isinstance(result, dict) else None
+        )
+        if options is None:
+            log.warning("%s: session/set_config_option answer without configOptions", self.agent.id)
+            return None
+        session.config_options = options
+        return list(options)
 
     async def close(self) -> None:
         self._closed = True
@@ -456,7 +504,7 @@ class AcpBackend:
         while self._restarts and now - self._restarts[0] > RESTART_WINDOW_S:
             self._restarts.popleft()
         if len(self._restarts) >= RESTART_LIMIT:
-            raise BackendError(
+            raise RestartLimitError(
                 Error(
                     strings.ACP_RESTART_LIMIT.format(count=RESTART_LIMIT, window=RESTART_WINDOW_S),
                     "crashed",
@@ -674,12 +722,13 @@ class AcpBackend:
         *,
         timeout_message: str | None,
         exit_prefix: str | None = None,
+        on_result: Callable[[Any], None] | None = None,
     ) -> Any:
         if process.conn is None:
             raise BackendError(Error(strings.ACP_CLOSED, "other"))
         timeout = self.agent.startup_timeout_s if timeout_message else None
         try:
-            return await process.conn.request(method, params, timeout=timeout)
+            return await process.conn.request(method, params, timeout=timeout, on_result=on_result)
         except TimeoutError:
             raise BackendError(Error(timeout_message or method, "timeout")) from None
         except ConnectionClosed:
@@ -781,10 +830,16 @@ class AcpBackend:
             log.debug("%s: ignoring notification %s", self.agent.id, method)
             return
         session = self._sessions.get(params.get("sessionId"))
-        if session is None or session.process is not process or session.turn is None:
-            log.debug("%s: session/update outside a turn ignored", self.agent.id)
+        if session is None or session.process is not process:
+            log.debug("%s: session/update of an unknown session ignored", self.agent.id)
             return
         event = map_session_update(params.get("update"))
+        if isinstance(event, ConfigOptions):
+            # Kept also outside a turn: the next config_options() call reports it.
+            session.config_options = list(event.options)
+        if session.turn is None:
+            log.debug("%s: session/update outside a turn ignored", self.agent.id)
+            return
         if event is not None:
             session.turn.queue.put_nowait(event)
 

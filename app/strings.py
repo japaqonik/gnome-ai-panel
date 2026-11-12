@@ -157,6 +157,7 @@ ACP_ENV_FAILED = "Nie można przygotować środowiska agenta: {reason}"
 ACP_MCP_ENV_FAILED = "Nie można przygotować serwera MCP „{id}”: {reason}"
 ACP_STARTUP_TIMEOUT = "Agent nie odpowiedział w ciągu {timeout:g} s (startup_timeout_s)"
 ACP_SESSION_TIMEOUT = "Agent nie utworzył sesji w ciągu {timeout:g} s"
+ACP_REQUEST_TIMEOUT = "Agent nie odpowiedział na {method} w ciągu {timeout:g} s"
 ACP_BAD_VERSION = "Nieobsługiwana wersja protokołu ACP: {version} (obsługiwana: {supported})"
 ACP_BAD_RESPONSE = "Niepoprawna odpowiedź agenta na {method}"
 ACP_REQUEST_FAILED = "Agent zwrócił błąd dla {method}: {reason}"
@@ -187,3 +188,47 @@ CTRL_EMPTY_PROMPT = "Wiadomość jest pusta."
 CTRL_INVALID_MESSAGE = "Nieprawidłowa wiadomość z interfejsu."
 CTRL_UNEXPECTED = "Nieoczekiwany błąd. Szczegóły są w dzienniku aplikacji."
 CTRL_TURN_ENDED = "Tura zakończyła się bez odpowiedzi agenta."
+CTRL_AGENT_RESTARTED = "Agent został uruchomiony ponownie, poprzedni kontekst utracony"
+CTRL_SESSION_ABANDONED = (
+    "Agent nie potwierdził przerwania poprzedniej odpowiedzi, więc rozpoczęto nową sesję; "
+    "poprzedni kontekst utracony"
+)
+CTRL_OPTION_FAILED = "Nie udało się zmienić ustawienia „{name}”: {reason}"
+CTRL_BLOCKED = (
+    "Agent ulegał awarii zbyt często i w tej rozmowie nie zostanie uruchomiony ponownie. "
+    "Rozpocznij nową rozmowę."
+)
+
+# Error messages in the chat (S4-T3): title and hint by ``Error.kind``.
+CHAT_ERROR_TITLES = {
+    "spawn": "Nie można uruchomić agenta",
+    "timeout": "Agent nie odpowiada",
+    "protocol": "Niezgodny protokół agenta",
+    "auth": "Agent wymaga zalogowania",
+    "http": "Błąd połączenia",
+    "crashed": "Agent przestał działać",
+    "other": "Błąd",
+}
+CHAT_ERROR_HINTS = {
+    "spawn": "Sprawdź pola „command”, „args”, „cwd” i „env” agenta w pliku konfiguracji.",
+    "timeout": (
+        "Sprawdź, czy polecenie uruchamia agenta w trybie ACP (np. argument „acp”), albo "
+        "zwiększ startup_timeout_s w konfiguracji agenta."
+    ),
+    "protocol": (
+        "Agent nie rozmawia zgodnie z ACP w wersji obsługiwanej przez panel (protokół 1). "
+        "Zaktualizuj agenta albo sprawdź jego argumenty."
+    ),
+    "auth": (
+        "Zaloguj się w terminalu, np. poleceniem logowania swojego agenta, i wyślij "
+        "wiadomość ponownie."
+    ),
+    "crashed": (
+        "Następna wiadomość uruchomi agenta ponownie; poprzedni kontekst rozmowy zostanie utracony."
+    ),
+}
+CHAT_AUTH_MESSAGE = "Agent nie utworzy sesji, dopóki się nie zalogujesz."
+CHAT_AUTH_METHODS = "Dostępne metody logowania:"
+CHAT_AUTH_NO_METHODS = "Agent nie podał metod logowania."
+CHAT_RESTART_LIMIT_HINT = "Rozpocznij nową rozmowę, aby spróbować ponownie."
+CHAT_STDERR_LABEL = "Ostatnie linie stderr agenta"

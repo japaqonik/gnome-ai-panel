@@ -165,6 +165,63 @@ def test_full_turn_through_debug_send(app_process, app_env, isolated_env) -> Non
     assert json.loads(path.read_text(encoding="utf-8")) == state
 
 
+def test_thinking_and_tool_card_through_debug_send(app_process, app_env) -> None:
+    # S4-T1: the fake `tool` scenario sends a thought, a tool call and two updates.
+    app_env["AI_PANEL_CONFIG"] = str(FAKE_CONFIG)
+    app_env["AI_PANEL_DEFAULT_AGENT"] = "fake-tool"
+    app = app_process("--background")
+    action(app, "debug-send", "x")
+    state = wait_dump(app, lambda s: turn_over(s, 1))
+
+    last = state["messages"][-1]
+    assert last["role"] == "assistant"
+    assert last["thinking"] == "Sprawdzę plik."
+    assert last["tools"] == [
+        {"id": "call_1", "title": "Odczyt pliku notes.txt", "status": "completed"}
+    ]
+    assert last["text"].strip() == "Plik zawiera: zawartość."
+    assert "Sprawdzę" not in last["html"]
+
+
+def test_permission_dialog_allow_then_reject(app_process, app_env) -> None:
+    # S4-T2 / UAT-S4-1: the fake `permission` scenario asks before "writing" out.txt.
+    app_env["AI_PANEL_CONFIG"] = str(FAKE_CONFIG)
+    app_env["AI_PANEL_DEFAULT_AGENT"] = "fake-perm"
+    app = app_process("--background")
+    for kind, status, text in (
+        ("allow_once", "completed", "Zezwolono"),
+        ("reject_once", "failed", "Odmowa"),
+    ):
+        action(app, "debug-send", "zrób")
+        state = wait_dump(app, lambda s: s["permission_dialog"]["open"])
+        assert state["permission_dialog"] == {"open": True, "title": "Zapis pliku out.txt"}
+        assert state["busy"] is True
+        time.sleep(0.3)
+        assert dump(app)["permission_dialog"]["open"] is True  # nothing chosen automatically
+        action(app, "debug-click", f"[data-option-kind={kind}]")
+        state = wait_dump(app, lambda s: turn_over(s, 1))
+        assert state["permission_dialog"] == {"open": False, "title": ""}
+        last = state["messages"][-1]
+        assert last["tools"][0]["status"] == status
+        assert last["text"].strip() == text
+        action(app, "new-chat")
+        wait_dump(app, lambda s: s["messages"] == [])
+
+
+def test_permission_dialog_closes_on_new_chat(app_process, app_env) -> None:
+    app_env["AI_PANEL_CONFIG"] = str(FAKE_CONFIG)
+    app_env["AI_PANEL_DEFAULT_AGENT"] = "fake-perm"
+    app = app_process("--background")
+    action(app, "debug-send", "zrób")
+    wait_dump(app, lambda s: s["permission_dialog"]["open"])
+    action(app, "new-chat")
+    state = wait_dump(app, lambda s: not s["permission_dialog"]["open"] and not s["busy"])
+    assert state["messages"] == []
+    # The agent got its answer (cancelled): the next turn asks again.
+    action(app, "debug-send", "zrób")
+    wait_dump(app, lambda s: s["permission_dialog"]["open"])
+
+
 def test_debug_send_respects_the_busy_check(app_process, app_env) -> None:
     app_env["AI_PANEL_CONFIG"] = str(FAKE_CONFIG)
     app_env["AI_PANEL_DEFAULT_AGENT"] = "fake-slow"
@@ -180,6 +237,34 @@ def test_debug_send_respects_the_busy_check(app_process, app_env) -> None:
     action(app, "debug-click", "#stop")
     state = wait_dump(app, lambda s: not s["busy"])
     assert "Przerwano" in state["messages"][-1]["text"]
+
+
+def test_crash_then_restart_through_debug_send(app_process, app_env) -> None:
+    # S4-T3 / UAT-S4-3: fake-crash-once dies on the first prompt (fresh cwd in the test HOME).
+    app_env["AI_PANEL_CONFIG"] = str(FAKE_CONFIG)
+    app_env["AI_PANEL_DEFAULT_AGENT"] = "fake-crash-once"
+    app = app_process("--background")
+    action(app, "debug-send", "a")
+    state = wait_dump(app, lambda s: turn_over(s, 1))
+    assert [m["role"] for m in state["messages"]] == ["user", "error"]
+    error = state["messages"][-1]
+    assert error["kind"] == "crashed"
+    assert "boom" in error["text"]
+    assert "kod 3" in error["text"]
+
+    action(app, "debug-send", "b")
+    state = wait_dump(app, lambda s: turn_over(s, 2))
+    assert [m["role"] for m in state["messages"]] == [
+        "user",
+        "error",
+        "user",
+        "notice",
+        "assistant",
+    ]
+    assert state["messages"][3]["text"] == (
+        "Agent został uruchomiony ponownie, poprzedni kontekst utracony"
+    )
+    assert state["messages"][-1]["text"].strip() == "Echo: b"
 
 
 def test_debug_click_with_bad_selector_is_harmless(app_process, app_env) -> None:
@@ -215,7 +300,10 @@ def test_external_link_goes_to_the_launcher(app_process, app_env, tmp_path) -> N
     wait_dump(app, lambda s: turn_over(s, 1) and "example.com" in s["messages"][-1]["html"])
     action(app, "debug-click", "a[data-external]")
     deadline = time.monotonic() + 5
-    while not uri_log.exists() and time.monotonic() < deadline:
+    # The app creates the file before writing to it: wait for a complete line.
+    while time.monotonic() < deadline:
+        if uri_log.exists() and uri_log.read_text(encoding="utf-8").endswith("\n"):
+            break
         time.sleep(0.05)
     assert uri_log.read_text(encoding="utf-8") == "https://example.com/\n"
     state = dump(app)

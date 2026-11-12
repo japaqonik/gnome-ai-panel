@@ -13,6 +13,9 @@ Scenarios (PLAN "Commands"):
                tool completed + "Zezwolono", rejected → tool failed + "Odmowa", cancelled →
                stopReason "cancelled"
   slow         one fragment every 200 ms for 10 s; session/cancel → stopReason "cancelled"
+  slow-tool    tool_call "Długie polecenie" (in_progress), then like slow; on session/cancel
+               the turn ends "cancelled" without any update of the tool call
+  stubborn     like slow, but ignores session/cancel (runs the full 10 s, "end_turn")
   crash        after session/prompt writes "boom" to stderr and exits with code 3
   crash-once   like crash for the first prompt only (marker file in the session cwd)
   bad-version  initialize answers protocolVersion 99
@@ -25,8 +28,10 @@ Scenarios (PLAN "Commands"):
   image        promptCapabilities.image = true; describes every received image
   env          replies with the value of the environment variable named in the prompt
 
---record FILE appends {"method", "params"} of every initialize, session/new, session/load and
-session/prompt as one JSON line.
+--record FILE appends {"method", "params"} of every initialize, session/new, session/load,
+session/prompt and session/set_config_option as one JSON line, and
+{"method": "session/request_permission", "result"} with the client's answer to every
+permission request.
 
 --system-prompt advertises agentCapabilities.sessionCapabilities.systemPrompt = {} (clients
 may then send systemPrompt in session/new).
@@ -48,6 +53,8 @@ SCENARIOS = (
     "tool",
     "permission",
     "slow",
+    "slow-tool",
+    "stubborn",
     "crash",
     "crash-once",
     "bad-version",
@@ -59,7 +66,13 @@ SCENARIOS = (
     "image",
     "env",
 )
-RECORDED_METHODS = ("initialize", "session/new", "session/load", "session/prompt")
+RECORDED_METHODS = (
+    "initialize",
+    "session/new",
+    "session/load",
+    "session/prompt",
+    "session/set_config_option",
+)
 CRASH_MARKER = ".fake-acp-crash-once"
 AUTH_METHODS = [
     {
@@ -143,6 +156,12 @@ class Agent:
             return
         with self.record.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps({"method": method, "params": params}, ensure_ascii=False) + "\n")
+
+    def save_result(self, method: str, result) -> None:
+        if self.record is None:
+            return
+        with self.record.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"method": method, "result": result}, ensure_ascii=False) + "\n")
 
     # -- dispatch ------------------------------------------------------------------------
 
@@ -293,6 +312,21 @@ class Agent:
             return await self.permission(session_id)
         elif scenario == "slow":
             return await self.slow(session_id)
+        elif scenario == "slow-tool":
+            self.update(
+                session_id,
+                {
+                    "sessionUpdate": "tool_call",
+                    "toolCallId": "call_long",
+                    "title": "Długie polecenie",
+                    "kind": "execute",
+                    "status": "in_progress",
+                    "rawInput": {"command": "sleep 10"},
+                },
+            )
+            return await self.slow(session_id)
+        elif scenario == "stubborn":
+            return await self.slow(session_id, honour_cancel=False)
         elif scenario == "env":
             name = text.strip()
             self.chunk(session_id, os.environ.get(name, f"<brak {name}>"))
@@ -372,6 +406,7 @@ class Agent:
                 ],
             },
         )
+        self.save_result("session/request_permission", result)
         outcome = (result or {}).get("outcome") or {}
         if outcome.get("outcome") == "cancelled" or session_id in self.cancelled:
             self.update(
@@ -395,14 +430,14 @@ class Agent:
         self.chunk(session_id, "Zezwolono" if allowed else "Odmowa")
         return "end_turn"
 
-    async def slow(self, session_id: str) -> str:
+    async def slow(self, session_id: str, honour_cancel: bool = True) -> str:
         steps = int(SLOW_DURATION_S / SLOW_INTERVAL_S)
         for i in range(steps):
-            if session_id in self.cancelled:
+            if honour_cancel and session_id in self.cancelled:
                 return "cancelled"
             self.chunk(session_id, f"fragment {i + 1} ")
             await asyncio.sleep(SLOW_INTERVAL_S)
-        return "cancelled" if session_id in self.cancelled else "end_turn"
+        return "cancelled" if honour_cancel and session_id in self.cancelled else "end_turn"
 
 
 def describe_image(block: dict) -> str:

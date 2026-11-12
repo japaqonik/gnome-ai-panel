@@ -34,7 +34,10 @@ def test_debug_actions_need_exactly_1(app_process, app_env, value) -> None:
 
 def _wait_file(path, timeout: float = 5.0) -> None:
     deadline = time.monotonic() + timeout
-    while not path.exists() and time.monotonic() < deadline:
+    # The app opens the file before it writes the line: wait for a complete line.
+    while time.monotonic() < deadline:
+        if path.exists() and path.read_text(encoding="utf-8").endswith("\n"):
+            return
         time.sleep(0.05)
 
 

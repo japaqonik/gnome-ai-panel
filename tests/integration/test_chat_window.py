@@ -62,7 +62,7 @@ async def _until(webview, script: str, timeout: float = 15.0):
 
 STATE = """(() => ({
     screen: document.getElementById('chat').hidden ? 'empty' : 'chat',
-    agent: document.getElementById('agent-name').textContent,
+    agent: document.getElementById('agent').selectedOptions[0]?.textContent ?? null,
     busy: !document.getElementById('stop').hidden,
     messages: [...document.querySelectorAll('.message')].map(n => ({
         role: n.dataset.role, text: n.textContent, kind: n.dataset.kind ?? null})),

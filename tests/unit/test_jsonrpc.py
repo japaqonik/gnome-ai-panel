@@ -571,3 +571,86 @@ async def test_nan_handler_result_gets_an_internal_error(peer: Peer) -> None:
     assert reply["id"] == 1
     assert reply["error"]["code"] == INTERNAL_ERROR
     await conn.close()
+
+
+async def test_on_result_runs_before_the_next_line_is_handled(peer: Peer) -> None:
+    # S4-T4: session/new registers the session in on_result, so a session/update sent
+    # right after the answer must see it.
+    order: list[str] = []
+    conn = make_conn(
+        peer, notification_handler=lambda method, params: order.append(f"note:{params['n']}")
+    )
+    task = asyncio.create_task(
+        conn.request("session/new", on_result=lambda result: order.append(f"hook:{result}"))
+    )
+    msg = await peer.read()
+    peer.send_raw(
+        json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": "s1"}).encode()
+        + b"\n"
+        + json.dumps({"jsonrpc": "2.0", "method": "session/update", "params": {"n": 1}}).encode()
+        + b"\n"
+    )
+    assert await task == "s1"
+    await asyncio.sleep(0.05)
+    assert order == ["hook:s1", "note:1"]
+    await conn.close()
+
+
+async def test_on_result_not_called_for_error_and_failure_still_delivers(peer: Peer) -> None:
+    calls: list = []
+    conn = make_conn(peer)
+    task = asyncio.create_task(conn.request("x", on_result=calls.append))
+    msg = await peer.read()
+    peer.send({"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -1, "message": "no"}})
+    with pytest.raises(JsonRpcError):
+        await task
+    assert calls == []
+
+    def broken(result) -> None:
+        raise RuntimeError("hook bug")
+
+    task = asyncio.create_task(conn.request("y", on_result=broken))
+    msg = await peer.read()
+    peer.send({"jsonrpc": "2.0", "id": msg["id"], "result": 7})
+    assert await task == 7
+    await conn.close()
+
+
+async def test_on_result_dropped_after_timeout_and_cancel(peer: Peer) -> None:
+    # A late answer to a request that already timed out or was cancelled must not run the
+    # hook (it would register a session nobody waits for).
+    calls: list = []
+    conn = make_conn(peer)
+    with pytest.raises(TimeoutError):
+        await conn.request("slow", timeout=0.05, on_result=calls.append)
+    timed_out = await peer.read()
+
+    task = asyncio.create_task(conn.request("cancelled", on_result=calls.append))
+    cancelled = await peer.read()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    peer.send({"jsonrpc": "2.0", "id": timed_out["id"], "result": "late"})
+    peer.send({"jsonrpc": "2.0", "id": cancelled["id"], "result": "late"})
+    # The connection still works and only the live request's hook runs.
+    task = asyncio.create_task(conn.request("live", on_result=calls.append))
+    live = await peer.read()
+    peer.send({"jsonrpc": "2.0", "id": live["id"], "result": "ok"})
+    assert await task == "ok"
+    assert calls == ["ok"]
+    assert conn._result_hooks == {}
+    await conn.close()
+
+
+async def test_on_result_not_called_when_connection_closes(peer: Peer) -> None:
+    calls: list = []
+    conn = make_conn(peer)
+    task = asyncio.create_task(conn.request("x", on_result=calls.append))
+    await peer.read()
+    peer.eof()
+    with pytest.raises(ConnectionClosed):
+        await task
+    assert calls == []
+    assert conn._result_hooks == {}
+    await conn.close()

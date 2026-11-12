@@ -27,15 +27,14 @@ HANDLER_NAME = "bridge"
 MAX_MESSAGE_BYTES = 32 * 1024 * 1024
 
 MAX_PENDING_DUMPS = 4
+# Longest id accepted in ``permission``, ``select_agent`` and ``set_option`` messages.
+MAX_ID_LENGTH = 256
 
 Message = dict[str, Any]
 
 # Messages of later stages (PLAN §12.2): known, but not handled yet.
 LATER_TYPES = frozenset(
     {
-        "permission",
-        "select_agent",
-        "set_option",
         "open_link",
         "pin",
         "escape",
@@ -55,6 +54,9 @@ class MessageHandler(Protocol):
     def send(self, text: str, images: list[dict[str, Any]] | None = None) -> None: ...
     def cancel(self) -> None: ...
     def new_chat(self) -> None: ...
+    def permission(self, request_id: str, option_id: str | None) -> None: ...
+    def select_agent(self, agent_id: str) -> bool: ...
+    def set_option(self, config_id: str, value: str) -> None: ...
 
 
 def parse_message(raw: str | None) -> Message | None:
@@ -73,6 +75,10 @@ def parse_message(raw: str | None) -> Message | None:
         log.warning("bridge: message without a string 'type', dropped")
         return None
     return data
+
+
+def _valid_id(value: Any) -> bool:
+    return isinstance(value, str) and 0 < len(value) <= MAX_ID_LENGTH
 
 
 def _valid_images(value: Any) -> bool:
@@ -158,6 +164,21 @@ class Bridge:
         elif kind == "new_chat":
             if handler is not None:
                 handler.new_chat()
+        elif kind == "permission":
+            self._handle_permission(message)
+        elif kind == "select_agent":
+            agent_id = message.get("id")
+            if not _valid_id(agent_id):
+                log.warning("bridge: invalid 'select_agent' message, dropped")
+            elif handler is not None:
+                handler.select_agent(agent_id)
+        elif kind == "set_option":
+            config_id = message.get("config_id")
+            value = message.get("value")
+            if not _valid_id(config_id) or not _valid_id(value):
+                log.warning("bridge: invalid 'set_option' message, dropped")
+            elif handler is not None:
+                handler.set_option(config_id, value)
         elif kind == "dump":
             self._handle_dump(message)
         elif kind in LATER_TYPES:
@@ -179,6 +200,15 @@ class Bridge:
             self.dispatch({"type": "error", "message": strings.CTRL_NO_AGENT, "kind": "other"})
             return
         self.handler.send(text, images)
+
+    def _handle_permission(self, message: Message) -> None:
+        request_id = message.get("request_id")
+        option_id = message.get("option_id")
+        if not _valid_id(request_id) or (option_id is not None and not _valid_id(option_id)):
+            log.warning("bridge: invalid 'permission' message, dropped")
+            return
+        if self.handler is not None:
+            self.handler.permission(request_id, option_id)
 
     def _handle_dump(self, message: Message) -> None:
         # The page is not trusted: only answers to our own requests are written.

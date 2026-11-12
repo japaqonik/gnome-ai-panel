@@ -223,8 +223,11 @@ class ScriptedBackend:
     async def cancel(self, session_id) -> None:
         self.cancelled.append(session_id)
 
+    def config_options(self, session_id) -> list:
+        return []
+
     async def set_option(self, session_id, config_id, value) -> None:
-        pass
+        return None
 
     async def close(self) -> None:
         pass

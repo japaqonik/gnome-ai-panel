@@ -87,8 +87,11 @@ def test_backend_protocol_is_structural() -> None:
         async def cancel(self, session_id) -> None:
             pass
 
+        def config_options(self, session_id) -> list:
+            return []
+
         async def set_option(self, session_id, config_id, value) -> None:
-            pass
+            return None
 
         async def close(self) -> None:
             pass

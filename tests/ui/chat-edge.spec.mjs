@@ -120,14 +120,21 @@ test('max_tokens and refusal stop reasons get markers, unknown reasons do not', 
 
 test('agent names are shown as text, not HTML', async ({page}) => {
     await startChat(page, {agents: [{id: 'x', name: '<img src=x onerror="window.__xss=1">'}], current: 'x'});
-    await expect(page.locator('#agent-name img')).toHaveCount(0);
-    await expect(page.locator('#agent-name')).toHaveText('<img src=x onerror="window.__xss=1">');
+    await expect(page.locator('.chat-header img')).toHaveCount(0);
+    await expect(page.locator('#agent option:checked'))
+        .toHaveText('<img src=x onerror="window.__xss=1">');
     expect(await page.evaluate(() => window.__xss)).toBeUndefined();
 });
 
 test('init with malformed agent entries does not throw', async ({page}) => {
-    await startChat(page, {agents: [null, 'str', {id: 7}], current: 'x'});
-    await expect(page.locator('#agent-name')).toHaveText('Brak agenta');
+    // Entries without a string id are dropped; with none left the empty screen is shown.
+    await dispatch(page, {type: 'init', config_errors: [], agents: [null, 'str', {id: 7}],
+        current: 'x'});
+    await expect(page.locator('#empty-state')).toBeVisible();
+    await expect(page.locator('#agent option')).toHaveCount(0);
+    await startChat(page, {agents: [null, {id: 7}, {id: 'ok'}], current: 'x'});
+    await expect(page.locator('#agent option')).toHaveCount(1);
+    await expect(page.locator('#agent option:checked')).toHaveText('ok');
     await dispatch(page, {type: 'init', agents: 'nope'});
     await expect(page.locator('#empty-state')).toBeVisible();
 });

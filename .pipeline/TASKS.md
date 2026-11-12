@@ -177,7 +177,7 @@ Value: Użytkownik pisze w oknie panelu i dostaje strumieniową odpowiedź skonf
 Value: W panelu widać myślenie agenta i karty narzędzi, użytkownik zatwierdza lub odrzuca prośby o uprawnienia, przerywa turę, dostaje czytelne błędy (brak komendy, awaria, logowanie) i przełącza agentów oraz modele w nagłówku, widząc oznaczenie trybu z narzędziami.
 
 ### S4-T1: Bloki myślenia i karty narzędzi
-- Status: [ ]
+- Status: [x]
 - Depends on: S3-T4
 - Requirements: FR-9, FR-10
 - Scope: controller: mapowanie `ThinkingDelta`/`ToolCall`/`ToolUpdate` na dispatch `thinking_delta`/`tool_call`/`tool_update`; UI: zwijany `<details class="thinking">` (domyślnie zwinięty, podczas strumienia nagłówek „Myśli…"), karta narzędzia (tytuł jako tekst, ikona statusu `pending|in_progress|completed|failed|cancelled`, rozwijane „Wejście" (`raw_input` jako sformatowany JSON przez `textContent`) i „Wynik" (treść tekstowa renderowana przez `renderMarkdown`, diff jako `<pre>`)); aktualizacja karty po `id`.
@@ -187,7 +187,7 @@ Value: W panelu widać myślenie agenta i karty narzędzi, użytkownik zatwierdz
 - Tests: Playwright: myślenie w `<details>` bez `open`; `tool_call` + 2× `tool_update` → jedna karta ze statusem `completed`; `raw_input` z `<script>` wyświetlony jako tekst; aktualizacja nieznanego `id` ignorowana. Unit controller: kolejność zdarzeń.
 
 ### S4-T2: Okienko zgody
-- Status: [ ]
+- Status: [x]
 - Depends on: S4-T1
 - Requirements: FR-11
 - Scope: controller: `PermissionRequest` → dispatch `permission_request` (opcje od agenta); odpowiedź `permission {request_id, option_id|null}` → `backend.respond_permission`; prośby kolejkowane (jedno okienko naraz); UI: modal `role="dialog"` `aria-modal="true"` z tytułem narzędzia (jako tekst), rodzajem, pełnym wejściem (komendy/ścieżki w całości), przyciskami z nazw opcji (allow_* jako „Zezwól…", reject_* jako „Odrzuć…" zgodnie z `name` od agenta), fokus na przycisku odrzucenia, Esc = odrzucenie (`reject_once` lub `null`); żadnego automatycznego wyboru; zamknięcie przy `done`/`cancel`.
@@ -197,7 +197,7 @@ Value: W panelu widać myślenie agenta i karty narzędzi, użytkownik zatwierdz
 - Tests: Playwright: modal pojawia się, fokus na odrzuceniu, Esc → `permission` z opcją reject; dwie prośby → druga po zamknięciu pierwszej. Integracja controller+AcpBackend: allow/deny; cancel z otwartą prośbą → agent dostaje `outcome: cancelled`.
 
 ### S4-T3: Anulowanie, awarie i czytelne błędy w UI
-- Status: [ ]
+- Status: [x]
 - Depends on: S4-T2
 - Requirements: FR-16, FR-17
 - Scope: stop w UI → `session/cancel`, natychmiastowe oznaczenie niezakończonych kart jako `cancelled`, `done cancelled` → „Przerwano"; komunikaty błędów w czacie dla `spawn`, `timeout`, `protocol`, `auth` (z listą metod i podpowiedzią „zaloguj się w terminalu, np. polecenie logowania swojego agenta"), `crashed` (kod + zwijane stderr); po `crashed` kolejny prompt restartuje proces i tworzy nową sesję z informacją „Agent został uruchomiony ponownie, poprzedni kontekst utracony"; po przekroczeniu limitu restartów komunikat i blokada do `new-chat`. Teksty w `app/strings.py`.
@@ -207,7 +207,7 @@ Value: W panelu widać myślenie agenta i karty narzędzi, użytkownik zatwierdz
 - Tests: unit controller dla każdego `Error.kind` → tekst; integracja: crash → restart → kolejna tura (scenariusz `crash-once`: kończy się tylko przy pierwszym prompcie, marker pliku w katalogu `cwd`); cancel z narzędziem `in_progress` → karta `cancelled`.
 
 ### S4-T4: Wybór agenta i modelu, oznaczenie trybu
-- Status: [ ]
+- Status: [x]
 - Depends on: S4-T3
 - Requirements: FR-12, FR-28
 - Scope: nagłówek UI: lista agentów (`select#agent`), wybór modelu (`select#model`) widoczny tylko gdy backend dał `ConfigOptions` z `category == "model"` (wartości `select`, także grupy); zmiana → `set_option` → `session/set_config_option`, odpowiedź aktualizuje UI; zmiana agenta → nowa rozmowa; plakietka `#mode-badge`: „Agent z narzędziami" (acp) / „Czysty czat" (api) z innym kolorem; akcje D-Bus `agent` (s, stan s) i `agents` (stan `a(ss)`), aktualizowane przy zmianie konfiguracji/wyboru (PLAN §12.1).

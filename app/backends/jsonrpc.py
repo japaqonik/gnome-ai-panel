@@ -123,6 +123,7 @@ class JsonRpcConnection:
         self._max_line = max_line
         self._next_id = 0
         self._pending: dict[int, asyncio.Future[Any]] = {}
+        self._result_hooks: dict[int, Callable[[Any], None]] = {}
         self._handler_tasks: set[asyncio.Task[None]] = set()
         self._write_lock = asyncio.Lock()
         self._reader_task: asyncio.Task[None] | None = None
@@ -158,6 +159,7 @@ class JsonRpcConnection:
         self._closed.set()
         log.debug("%s: connection closed: %s", self.name, reason)
         pending, self._pending = self._pending, {}
+        self._result_hooks.clear()
         for future in pending.values():
             if not future.done():
                 future.set_exception(ConnectionClosed(reason))
@@ -167,12 +169,21 @@ class JsonRpcConnection:
     # -- sending ---------------------------------------------------------------------------
 
     async def request(
-        self, method: str, params: Any = None, *, timeout: float | None = None
+        self,
+        method: str,
+        params: Any = None,
+        *,
+        timeout: float | None = None,
+        on_result: Callable[[Any], None] | None = None,
     ) -> Any:
         """Send a request and return its ``result``.
 
         Raises ``JsonRpcError`` for an error response, ``ConnectionClosed`` when the stream
         ends first and ``TimeoutError`` after ``timeout`` seconds.
+
+        ``on_result`` is called with a successful ``result`` by the reader itself, before
+        the next incoming line is handled (the awaiting caller resumes only later). It lets
+        the caller register state that notifications right after the response refer to.
         """
         if self.closed:
             raise ConnectionClosed(self.close_reason or "closed")
@@ -183,12 +194,15 @@ class JsonRpcConnection:
             message["params"] = params
         future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
         self._pending[request_id] = future
+        if on_result is not None:
+            self._result_hooks[request_id] = on_result
         try:
             await self._send(message)
             async with asyncio.timeout(timeout):
                 return await future
         finally:
             self._pending.pop(request_id, None)
+            self._result_hooks.pop(request_id, None)
 
     async def notify(self, method: str, params: Any = None) -> None:
         if self.closed:
@@ -314,7 +328,14 @@ class JsonRpcConnection:
             else:
                 future.set_exception(JsonRpcError(INTERNAL_ERROR, str(error)))
         else:
-            future.set_result(message.get("result"))
+            result = message.get("result")
+            hook = self._result_hooks.pop(request_id, None)
+            if hook is not None:
+                try:
+                    hook(result)
+                except Exception:
+                    log.exception("%s: result hook of request %r failed", self.name, request_id)
+            future.set_result(result)
 
     async def _handle_notification(self, method: str, params: Any) -> None:
         if self._notification_handler is None:

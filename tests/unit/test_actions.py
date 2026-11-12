@@ -22,7 +22,7 @@ def test_application_id(application: AiPanelApplication) -> None:
     assert application.get_application_id() == APP_ID == "pl.local.AiPanel"
 
 
-EXPECTED_ACTIONS = ["toggle", "show", "hide", "new-chat", "quit", "visible"]
+EXPECTED_ACTIONS = ["toggle", "show", "hide", "new-chat", "quit", "visible", "agent", "agents"]
 
 
 def test_registered_actions(application: AiPanelApplication) -> None:
@@ -56,6 +56,27 @@ def test_visible_is_read_only(application: AiPanelApplication) -> None:
     action.change_state(GLib.Variant("b", True))
     action.activate(None)
     assert action.get_state().get_boolean() is False
+
+
+def test_agent_action_has_string_parameter_and_state(application: AiPanelApplication) -> None:
+    action = application.lookup_action("agent")
+    assert action.get_parameter_type().equal(GLib.VariantType.new("s"))
+    assert action.get_state_type().equal(GLib.VariantType.new("s"))
+    assert action.get_state().get_string() == ""
+    # Without a controller (before startup) nothing is selected.
+    action.activate(GLib.Variant("s", "x"))
+    action.change_state(GLib.Variant("s", "x"))
+    assert action.get_state().get_string() == ""
+
+
+def test_agents_action_is_read_only_list(application: AiPanelApplication) -> None:
+    action = application.lookup_action("agents")
+    assert action.get_state_type().equal(GLib.VariantType.new("a(ss)"))
+    assert action.get_parameter_type() is None
+    assert action.get_state().unpack() == []
+    action.change_state(GLib.Variant("a(ss)", [("x", "X")]))
+    action.activate(None)
+    assert action.get_state().unpack() == []
 
 
 @pytest.mark.parametrize("name", ["toggle", "show", "hide", "new-chat"])

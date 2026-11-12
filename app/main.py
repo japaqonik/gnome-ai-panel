@@ -1,7 +1,10 @@
 """Application ``pl.local.AiPanel``: background instance controlled through D-Bus actions.
 
-Actions (PLAN §12.1): ``toggle``, ``show``, ``hide``, ``new-chat``, ``quit`` and the
-read-only boolean state ``visible``. ``--background`` starts without showing the window.
+Actions (PLAN §12.1): ``toggle``, ``show``, ``hide``, ``new-chat``, ``quit``, the
+read-only boolean state ``visible``, ``agent`` (parameter and state ``s``: the current agent
+id, ``""`` without agents; activating it or setting its state selects an agent and starts a
+new conversation) and the read-only ``agents`` (state ``a(ss)``: id and name of every valid
+agent). ``--background`` starts without showing the window.
 With ``AI_PANEL_DEBUG=1`` also ``debug-send`` (s), ``debug-click`` (s) and ``debug-dump``
 (see ``app/debug.py``).
 
@@ -32,7 +35,7 @@ log = logging.getLogger(__name__)
 
 APP_ID = "pl.local.AiPanel"
 SIMPLE_ACTIONS = ("toggle", "show", "hide", "new-chat", "quit")
-STATE_ACTIONS = ("visible",)
+STATE_ACTIONS = ("visible", "agent", "agents")
 DEBUG_ACTIONS = ("debug-send", "debug-click", "debug-dump")
 # Upper bound for stopping the agents at quit (SIGTERM, SIGKILL after 3 s in AcpBackend).
 SHUTDOWN_TIMEOUT_S = 5.0
@@ -78,6 +81,18 @@ class AiPanelApplication(Adw.Application):
         visible.connect("activate", self._on_readonly_action)
         visible.connect("change-state", self._on_readonly_action)
         self.add_action(visible)
+
+        # Filled from the configuration in do_startup (_sync_agent_actions).
+        agent = Gio.SimpleAction.new_stateful(
+            "agent", GLib.VariantType.new("s"), GLib.Variant("s", "")
+        )
+        agent.connect("activate", self._on_agent_requested)
+        agent.connect("change-state", self._on_agent_requested)
+        self.add_action(agent)
+        agents = Gio.SimpleAction.new_stateful("agents", None, GLib.Variant("a(ss)", []))
+        agents.connect("activate", self._on_readonly_action)
+        agents.connect("change-state", self._on_readonly_action)
+        self.add_action(agents)
 
     def _add_debug_actions(self) -> None:
         string = GLib.VariantType.new("s")
@@ -164,6 +179,27 @@ class AiPanelApplication(Adw.Application):
         finally:
             self.quit()
 
+    def _on_agent_requested(self, _action, parameter: GLib.Variant | None) -> None:
+        if parameter is None or self._controller is None:
+            return
+        agent_id = parameter.get_string()
+        log.info("agent %r requested over D-Bus", agent_id[:64])
+        self._controller.select_agent(agent_id)
+
+    def _sync_agent_actions(self, *_args) -> None:
+        """Copy the current agent and the agent list into the ``agent``/``agents`` states."""
+        controller = self._controller
+        if controller is None:
+            return
+        current = GLib.Variant("s", controller.agent_id or "")
+        agent = self.lookup_action("agent")
+        if not agent.get_state().equal(current):
+            agent.set_state(current)
+        agents = GLib.Variant("a(ss)", controller.agents)
+        action = self.lookup_action("agents")
+        if not action.get_state().equal(agents):
+            action.set_state(agents)
+
     def _on_readonly_action(self, action: Gio.SimpleAction, _value) -> None:
         log.debug("ignoring attempt to change read-only action %r", action.get_name())
 
@@ -222,7 +258,9 @@ class AiPanelApplication(Adw.Application):
             lambda agent: get_backend(agent, mcp=config.mcp),
             default_agent=default_agent_override(os.environ),
             system_dark=style.get_dark,
+            on_agent_changed=self._sync_agent_actions,
         )
+        self._sync_agent_actions()
         bridge.handler = self._controller
         if debug.debug_enabled():
             bridge.on_dump = self._write_dump

@@ -42,7 +42,8 @@ test.afterEach(() => {
 test('init with agents shows the chat with the current agent in the header', async ({page}) => {
     await startChat(page, {agents: AGENTS, current: 'other'});
     await expect(page.locator('#empty-state')).toBeHidden();
-    await expect(page.locator('#agent-name')).toHaveText('Other');
+    await expect(page.locator('#agent')).toHaveValue('other');
+    await expect(page.locator('#agent option:checked')).toHaveText('Other');
     await expect(page.locator('#messages')).toHaveAttribute('aria-live', 'polite');
     await expect(page.locator('#prompt')).toBeFocused();
     await expect(page.locator('#send')).toBeVisible();
@@ -51,7 +52,8 @@ test('init with agents shows the chat with the current agent in the header', asy
 
 test('init with an unknown current agent falls back to the first one', async ({page}) => {
     await startChat(page, {agents: AGENTS, current: 'missing'});
-    await expect(page.locator('#agent-name')).toHaveText('Fake Echo');
+    await expect(page.locator('#agent')).toHaveValue('fake-echo');
+    await expect(page.locator('#agent option:checked')).toHaveText('Fake Echo');
 });
 
 test('init with no agents shows #empty-state', async ({page}) => {

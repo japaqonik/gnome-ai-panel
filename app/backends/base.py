@@ -118,6 +118,11 @@ class BackendError(Exception):
         return self.event.kind
 
 
+class RestartLimitError(BackendError):
+    """The agent crashed too often (ACP: ``RESTART_LIMIT`` restarts per ``RESTART_WINDOW_S``)
+    and is not started again for now. ``event.kind`` is ``crashed``."""
+
+
 type Event = (
     TextDelta
     | ThinkingDelta
@@ -176,8 +181,16 @@ class Backend(Protocol):
         """Ask the backend to stop the running turn; ``send`` then yields ``Done("cancelled")``."""
         ...
 
-    async def set_option(self, session_id: str, config_id: str, value: str) -> None:
-        """Change a session option (e.g. the model)."""
+    def config_options(self, session_id: str) -> list[dict[str, Any]]:
+        """The session's config options as last reported (ACP ``SessionConfigOption``
+        objects, e.g. the model selector); empty when the backend has none."""
+        ...
+
+    async def set_option(
+        self, session_id: str, config_id: str, value: str
+    ) -> list[dict[str, Any]] | None:
+        """Change a session option (e.g. the model). Returns the complete new list of
+        options, or ``None`` when the backend did not report it."""
         ...
 
     async def close(self) -> None:

@@ -8,13 +8,51 @@ speaking the [Agent Client Protocol](https://agentclientprotocol.com) (e.g. `kir
   background and controlled through D-Bus actions,
 - a GNOME Shell extension that docks the window to a screen edge and toggles it with a shortcut.
 
-Status: early development (stage S3). The application reads the configuration at start, shows
+Status: early development (stage S4). The application reads the configuration at start, shows
 the chat page and answers the D-Bus actions below. A prompt typed in the window is sent to the
 chosen agent and the reply streams in as markdown; the stop button cancels the turn and the
 `new-chat` action starts a new conversation. Links in replies open in the default browser;
 the panel itself never navigates away. The page follows `chat.theme` and `chat.font_size`.
-Thinking, tool calls and permission dialogs are not shown yet (permission requests are
-rejected). The configuration file is read and
+The agent's thinking appears in a collapsed "Myślenie" block above the reply (header
+"Myśli…" while it streams) and every tool call gets a card with its title, a status icon
+(pending, in progress, completed, failed, cancelled) and collapsible "Wejście" (the raw input
+as JSON text) and "Wynik" (text output as markdown, diffs as plain text). When the agent asks
+for permission, a modal dialog shows the tool title, its kind and the full input, with one
+button per option the agent offers (labelled with the agent's names). The focus starts on the
+reject button and Esc rejects; nothing is ever allowed automatically. Mouse clicks on the
+buttons count only 0.4 s after a request appears (so a double click cannot answer the next
+one); the keyboard works at once. While the dialog is open the rest of the window, including
+the stop button, cannot be used: answer or press Esc first. Several requests are
+shown one after another, and the dialog closes without an answer when the turn ends, is
+stopped or `new-chat` runs (the agent then gets `cancelled`).
+
+Stop sends `session/cancel`; tool cards that are still pending or in progress turn "Anulowane"
+at once and the reply ends with "Przerwano". An agent that has not ended the turn 5 s after
+the cancel is given up on: the turn ends as cancelled and the next prompt starts a new session
+(with a note that the previous context is lost). Errors appear in the chat as a card with a
+title, the message and a hint: missing command (`spawn`), no answer within
+`startup_timeout_s` (`timeout`), wrong protocol version (`protocol`), login required (`auth`,
+with the agent's login methods and a hint to log in in a terminal) and a crashed agent
+(`crashed`, exit code plus its last stderr lines in a collapsed block). After a crash the next
+prompt restarts the agent and opens a new session; the chat then shows "Agent został
+uruchomiony ponownie, poprzedni kontekst utracony" above the reply. When the agent has been
+restarted 3 times within 60 s, it is not started again: the card says so, the prompt is
+disabled and only a new conversation (the card's "Nowa rozmowa" button or `new-chat`) unblocks
+it; the 60 s window still applies after that. Try it:
+
+```bash
+AI_PANEL_CONFIG=$PWD/tests/data/config_fake.toml AI_PANEL_DEFAULT_AGENT=fake-crash-once make run-headless
+source .run/headless.env
+gapplication action pl.local.AiPanel debug-send "'a'"   # error card with "boom"
+gapplication action pl.local.AiPanel debug-send "'b'"   # restart notice, then "Echo: b"
+make -s cli ARGS="ui-dump"
+make stop
+```
+
+`fake-crash-once` keeps a marker file in its `cwd` (under `.run/home/.cache/…` for
+`make run-headless`); delete it to make the agent crash again.
+
+The configuration file is read and
 validated by the CLI, and secrets can be stored in the keyring (see Configuration).
 The ACP client (`app/backends/acp.py`, one process per agent, restarted after a crash at most
 3 times per 60 s) also works from the terminal: `chat` runs one turn with any configured agent
@@ -50,6 +88,9 @@ Development).
 gapplication action pl.local.AiPanel toggle   # also: show, hide, new-chat, quit
 gdbus call --session -d pl.local.AiPanel -o /pl/local/AiPanel \
     -m org.gtk.Actions.Describe visible       # read-only boolean state of the window
+gapplication action pl.local.AiPanel agent "'fake-models'"   # switch agent (new conversation)
+gdbus call --session -d pl.local.AiPanel -o /pl/local/AiPanel \
+    -m org.gtk.Actions.Describe agents        # read-only a(ss): (id, name) of every valid agent
 ```
 
 With `make`:
@@ -77,7 +118,33 @@ The window talks to the agent chosen at start: `AI_PANEL_DEFAULT_AGENT` (agent i
 names a valid agent, otherwise `default_agent` from the configuration, otherwise the first valid
 agent. Without agents the window shows the empty "add an agent" screen. The agent process starts
 with the first prompt and keeps its session until `new-chat`; `quit` (and SIGTERM) stops it
-(SIGTERM, SIGKILL after 3 s). Try it with the fake agents:
+(SIGTERM, SIGKILL after 3 s).
+
+The header of the chat has the agent list (`select#agent`), the model list (`select#model`)
+and the mode badge (`#mode-badge`). Choosing another agent stops the running turn and starts a
+new conversation with it; the previous agent's process keeps running until `quit`. The D-Bus
+action `agent` does the same (parameter `s`, the agent id; `SetState` works too) and its
+state `s` is the current agent id (`""` without agents). An unknown id is ignored. The
+read-only state `agents` (`a(ss)`) lists the id and name of every valid agent, for the tray
+menu of the extension. The model list appears only when the agent reports session config
+options with `category: "model"` (ACP `configOptions` of `session/new`, also grouped values,
+and `config_option_update`), so with a lazily started agent it shows after the first prompt.
+A change sends `session/set_config_option`; the list stays disabled until the agent answers
+and then shows the value the agent reports. If the agent refuses, the old value comes back
+and a note appears in the chat. The badge reads "Agent z narzędziami" (amber) for `acp`
+agents and "Czysty czat" (green) for `api` agents. API agents can already be chosen, but
+sending a prompt to one gives the "not supported yet" error until the API backend lands.
+Try it with the fake agents:
+
+```bash
+AI_PANEL_CONFIG=$PWD/tests/data/config_fake.toml make run-headless && source .run/headless.env
+gapplication action pl.local.AiPanel agent "'fake-models'"
+gapplication action pl.local.AiPanel debug-send "'a'"   # "[fake-small] Echo: a", model list shown
+make -s cli ARGS="ui-dump"                              # agent == "fake-models", badge == "tools"
+make stop
+```
+
+More fake agents:
 
 ```bash
 AI_PANEL_CONFIG=$PWD/tests/data/config_fake.toml AI_PANEL_DEFAULT_AGENT=fake-slow make run-headless
@@ -87,7 +154,10 @@ Debug actions exist only when the app starts with `AI_PANEL_DEBUG=1` (`make run-
 sets it): `debug-send` types a prompt into the page and sends it the way Enter does (nothing is
 sent while a turn runs), `debug-click` clicks the first element matching a CSS selector, and
 `debug-dump` writes the page state to `$XDG_STATE_HOME/gnome-ai-panel/debug-dump.json` (mode
-0600; format in PLAN §12.1, plus `busy` and the web view `uri`). `make cli ARGS="ui-dump"`
+0600; format in PLAN §12.1, plus `busy` and the web view `uri`; each message has
+`thinking` (text) and `tools` (`[{id, title, status}]`); `permission_dialog` is
+`{open, title}` of the request on screen; `agent` is the current agent id and `badge` is
+`tools` (acp), `chat` (api) or `null`). `make cli ARGS="ui-dump"`
 activates `debug-dump`, waits up to 5 s for the new file and prints it (exit 1 when the app is
 not running with debug actions or no dump arrives):
 
@@ -96,6 +166,17 @@ AI_PANEL_CONFIG=$PWD/tests/data/config_fake.toml make run-headless && source .ru
 gapplication action pl.local.AiPanel debug-send "'md: tabela'"
 gapplication action pl.local.AiPanel debug-click "'a[data-external]'"
 make -s cli ARGS="ui-dump"
+```
+
+The permission dialog with the fake agent that asks before writing a file:
+
+```bash
+AI_PANEL_CONFIG=$PWD/tests/data/config_fake.toml AI_PANEL_DEFAULT_AGENT=fake-perm make run-headless
+source .run/headless.env
+gapplication action pl.local.AiPanel debug-send "'zrób'"
+make -s cli ARGS="ui-dump"        # permission_dialog.open == true
+gapplication action pl.local.AiPanel debug-click "'[data-option-kind=allow_once]'"
+make -s cli ARGS="ui-dump"        # tools[0].status == "completed", reply "Zezwolono"
 ```
 
 `gapplication list-actions` needs an installed `.desktop` file (stage S6); until then list the
@@ -264,19 +345,76 @@ the result. `make vendor` stops with an error when `node_modules` does not match
 the stop button (`{type: "cancel"}`) and the handlers of `init`, `turn_start`, `text_delta`
 (rendered at most once per animation frame), `done` and `error` that Python calls through
 `window.aiPanel.dispatch(obj)`, plus `conversation` (clears the list on `new-chat`);
-`tests/ui/chat.spec.mjs` drives them with the mock bridge. On the Python side `app/bridge.py`
+`tests/ui/chat.spec.mjs` drives them with the mock bridge. `thinking_delta` appends to the
+`<details class="thinking">` of the reply (never `open` by default), `tool_call` creates a
+`.tool[data-tool-id][data-status]` card (a repeated id updates the same card) and
+`tool_update` changes only the fields it carries on the card with that id; updates of an id
+the turn has not announced are ignored (`tests/ui/tools.spec.mjs`). All tool fields go in
+through `textContent`, except text output, which goes through `renderMarkdown`.
+`app/ui/permission.js` holds the permission dialog: `permission_request` (only while a turn
+runs; a repeated `request_id` is ignored) is shown in `#permission-dialog` (`role="dialog"`,
+`aria-modal="true"`, the rest of the page `inert`, Tab stays inside) or queued behind the open
+one. Every field from the agent goes in through `textContent`. Each option becomes a button
+with `data-option-id` and `data-option-kind`; when the agent offers no `reject_*` option, an
+extra "Odrzuć" button answers `null`. A click posts `{type: "permission", request_id,
+option_id}` (pointer clicks are ignored while the buttons carry `aria-disabled`, for 400 ms
+after each request is shown, and so are repeated clicks with `event.detail > 1`; keyboard
+activation is immediate), and Esc posts the `reject_once` option or `option_id: null`. `done`, `error`,
+`conversation` and the stop button close the dialog and drop the queue without posting
+(`tests/ui/permission.spec.mjs`). On the Python side `app/bridge.py`
 checks the fields of every page message (an invalid `send` is answered with `error`, other
 invalid or unknown messages are logged as warnings and dropped) and dispatches events with
 `evaluate_javascript`, the JSON escaped so that `</script>` and U+2028 cannot break out.
 `app/controller.py` (`ChatController`, no GTK) keeps the conversation in memory, creates the
 agent session at the first prompt and answers every `send` with exactly one `done` or `error`
 (also when it is rejected because a turn is running or there is no agent); nothing of a turn is
-dispatched after its `done`/`error`, and repeated `cancel` messages count as one.
+dispatched after its `done`/`error`, and repeated `cancel` messages count as one. It forwards
+thinking and tool events of the turn (`tool_update` with only the changed fields, unknown ids
+dropped) and stores them in the assistant message as `thinking` and
+`tools: [{id, title, status, input, output}]`. A `PermissionRequest` is dispatched as
+`permission_request {request_id, tool_call_id, title, kind, raw_input, options: [{id, name,
+kind}]}` and waits; the page's `permission` answer goes to `backend.respond_permission` once
+per request and only for open requests of the running turn (an option the agent did not offer
+counts as a rejection). Requests still open when the turn ends are answered by the backend
+(ACP: `outcome: cancelled`).
+
+Agent and model (`tests/unit/test_controller_agents.py`,
+`tests/integration/test_controller_models_acp.py`, `tests/integration/test_agent_actions.py`,
+`tests/ui/header.spec.mjs`): the page posts `select_agent {id}` and `set_option {config_id,
+value}`; the bridge drops them unless the fields are non-empty strings of at most 256
+characters. `ChatController.select_agent` refuses unknown ids (and sends `init` again so the
+page shows the current agent); otherwise it runs `new_chat`, sends `init` with the new
+`current` and calls `on_agent_changed`, which updates the D-Bus states. The controller keeps
+the session's config options (`Backend.config_options(session_id)`, filled by `AcpBackend`
+from `session/new`, `session/set_config_option` and `config_option_update`), passes only
+well-formed `select` options to the page as `config_options {options}` and forwards a
+`set_option` only for an option and value the session offered. A failed change is answered
+with the unchanged `config_options` and `notice {kind: "option_failed"}`. The options are
+dropped with the session (new conversation, crash, abandoned cancel).
+
+Cancel and failures (`tests/unit/test_controller_failures.py`,
+`tests/integration/test_controller_failures_acp.py`, `tests/ui/failures.spec.mjs`): `cancel`
+dispatches `tool_update {status: "cancelled"}` for every pending or in-progress tool call of the
+turn (so does a `done cancelled` from the agent) and starts a watchdog; when the backend has
+not ended the turn after `CANCEL_TIMEOUT_S` (5 s, `ChatController(cancel_timeout_s=…)`), the
+controller ends it with `done cancelled`, closes the event stream and drops the session. Backend
+errors go to the page as `error {kind, title, message, hint, stderr, stderr_label,
+auth_methods, methods_label, blocked}` with the texts of `app/strings.py` (`CHAT_ERROR_*`);
+for `crashed` the stderr tail is moved out of `message` into `stderr`, for `auth` the message
+is replaced by a short text and `auth_methods` lists `name: description` of each method. When a
+session dies with its process, the next new session is announced with `notice {kind:
+"context_lost", text}`, which the page shows above the reply. `AcpBackend` raises
+`RestartLimitError` (a `BackendError`) when it refuses a restart; the controller then answers
+with `blocked: true` and rejects every `send` the same way until `new_chat`. The page disables
+the prompt for a blocked error, adds a button that posts `new_chat` and enables the prompt
+again on `conversation`. An error card replaces the empty reply of its turn.
 
 Environment variables used by the app and tests are listed in `.env.example`.
 
 `tests/fakes/fake_acp_agent.py --scenario NAME [--record FILE]` is a stand-alone fake ACP agent
-(stdlib only) used by the tests; the scenarios are listed in its docstring. Try it with:
+(stdlib only) used by the tests; the scenarios are listed in its docstring (besides those of
+`config_fake.toml`: `slow-tool`, a long tool call in progress that is not updated on cancel,
+and `stubborn`, which ignores `session/cancel`). Try it with:
 
 ```bash
 printf '%s\n' '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":1}}' \

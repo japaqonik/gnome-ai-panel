@@ -86,6 +86,16 @@ class RecordingHandler:
     def new_chat(self) -> None:
         self.calls.append(("new_chat",))
 
+    def permission(self, request_id, option_id) -> None:
+        self.calls.append(("permission", request_id, option_id))
+
+    def select_agent(self, agent_id) -> bool:
+        self.calls.append(("select_agent", agent_id))
+        return True
+
+    def set_option(self, config_id, value) -> None:
+        self.calls.append(("set_option", config_id, value))
+
 
 class SinkBridge(bridge.Bridge):
     """Records dispatched events instead of running JavaScript."""
@@ -160,7 +170,7 @@ def test_send_without_handler_is_answered_with_error() -> None:
     assert [e["type"] for e in b.dispatched] == ["error"]
 
 
-@pytest.mark.parametrize("kind", ["something-else", "permission"])
+@pytest.mark.parametrize("kind", ["something-else", "history_list"])
 def test_unhandled_types_log_warning(kind, caplog) -> None:
     handler = RecordingHandler()
     b = SinkBridge(handler)
@@ -233,3 +243,80 @@ def test_pending_dump_requests_are_bounded() -> None:
     for _ in range(bridge.MAX_PENDING_DUMPS + 5):
         b.handle({"type": "dump", "state": {}})
     assert len(dumps) == bridge.MAX_PENDING_DUMPS
+
+
+# -- permission (S4-T2) -----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("option_id", ["allow", None])
+def test_permission_is_routed_to_the_handler(option_id) -> None:
+    handler = RecordingHandler()
+    b = SinkBridge(handler)
+    b.handle({"type": "permission", "request_id": "perm-1", "option_id": option_id})
+    assert handler.calls == [("permission", "perm-1", option_id)]
+    assert b.dispatched == []
+
+
+def test_permission_without_option_id_means_reject() -> None:
+    handler = RecordingHandler()
+    SinkBridge(handler).handle({"type": "permission", "request_id": "perm-1"})
+    assert handler.calls == [("permission", "perm-1", None)]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"type": "permission"},
+        {"type": "permission", "request_id": 1, "option_id": "allow"},
+        {"type": "permission", "request_id": "", "option_id": "allow"},
+        {"type": "permission", "request_id": "x" * 257, "option_id": None},
+        {"type": "permission", "request_id": "perm-1", "option_id": 5},
+        {"type": "permission", "request_id": "perm-1", "option_id": ""},
+        {"type": "permission", "request_id": "perm-1", "option_id": ["allow"]},
+    ],
+)
+def test_invalid_permission_is_dropped(message, caplog) -> None:
+    handler = RecordingHandler()
+    b = SinkBridge(handler)
+    with caplog.at_level(logging.WARNING, logger="app.bridge"):
+        b.handle(message)
+    assert handler.calls == []
+    assert b.dispatched == []
+    assert any("invalid 'permission'" in m for m in caplog.messages)
+
+
+# -- select_agent / set_option (S4-T4) ---------------------------------------------------------
+
+
+def test_select_agent_and_set_option_reach_the_handler() -> None:
+    handler = RecordingHandler()
+    b = SinkBridge(handler)
+    b.handle({"type": "select_agent", "id": "fake-models"})
+    b.handle({"type": "set_option", "config_id": "model", "value": "fake-large"})
+    assert handler.calls == [
+        ("select_agent", "fake-models"),
+        ("set_option", "model", "fake-large"),
+    ]
+    assert b.dispatched == []
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"type": "select_agent"},
+        {"type": "select_agent", "id": ""},
+        {"type": "select_agent", "id": 7},
+        {"type": "select_agent", "id": "x" * 257},
+        {"type": "set_option", "config_id": "model"},
+        {"type": "set_option", "config_id": "model", "value": True},
+        {"type": "set_option", "config_id": None, "value": "a"},
+        {"type": "set_option", "config_id": "model", "value": "v" * 257},
+    ],
+)
+def test_invalid_select_agent_and_set_option_are_dropped(message, caplog) -> None:
+    handler = RecordingHandler()
+    b = SinkBridge(handler)
+    with caplog.at_level(logging.WARNING, logger="app.bridge"):
+        b.handle(message)
+    assert handler.calls == []
+    assert any(f"invalid '{message['type']}'" in m for m in caplog.messages)

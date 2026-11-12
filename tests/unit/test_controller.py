@@ -50,6 +50,10 @@ class FakeBackend:
         self.closed_iterators = 0
         self.session_gate: asyncio.Event | None = None
         self._cancelled = asyncio.Event()
+        # ACP configOptions reported for every session; set_option changes currentValue.
+        self.options: list[dict] = []
+        self.option_calls: list[tuple[str, str, str]] = []
+        self.option_error: Error | None = None
 
     async def new_session(self) -> str:
         if self.session_gate is not None:
@@ -82,8 +86,17 @@ class FakeBackend:
         self.cancels.append(session_id)
         self._cancelled.set()
 
-    async def set_option(self, session_id, config_id, value) -> None:
-        pass
+    def config_options(self, session_id) -> list:
+        return [dict(o) for o in self.options]
+
+    async def set_option(self, session_id, config_id, value):
+        self.option_calls.append((session_id, config_id, value))
+        if self.option_error is not None:
+            raise BackendError(self.option_error)
+        for option in self.options:
+            if option["id"] == config_id:
+                option["currentValue"] = value
+        return [dict(o) for o in self.options]
 
     async def close(self) -> None:
         pass
@@ -188,6 +201,7 @@ async def test_turn_dispatch_order() -> None:
     assert sink.events == [
         {"type": "turn_start"},
         {"type": "text_delta", "text": "Echo: "},
+        {"type": "thinking_delta", "text": "hmm"},
         {"type": "text_delta", "text": "hi"},
         {"type": "done", "stop_reason": "end_turn"},
     ]
@@ -199,6 +213,7 @@ async def test_turn_dispatch_order() -> None:
         {
             "role": "assistant",
             "parts": [{"type": "text", "text": "Echo: hi"}],
+            "thinking": "hmm",
             "stop_reason": "end_turn",
         },
     ]
@@ -304,11 +319,17 @@ async def test_session_error_is_reported_and_retried() -> None:
     assert sink.events == [
         {"type": "turn_start"},
         {
+            # S4-T3: backend errors carry the chat texts of app/strings.py.
             "type": "error",
-            "message": "no login",
             "kind": "auth",
-            "auth_methods": None,
+            "title": strings.CHAT_ERROR_TITLES["auth"],
+            "message": strings.CHAT_AUTH_MESSAGE,
+            "hint": strings.CHAT_ERROR_HINTS["auth"],
             "stderr": None,
+            "stderr_label": None,
+            "auth_methods": [],
+            "methods_label": strings.CHAT_AUTH_NO_METHODS,
+            "blocked": False,
         },
     ]
     backend.session_error = None
@@ -337,13 +358,14 @@ async def test_iterator_without_done_ends_with_error() -> None:
     assert sink.events[-1]["type"] == "error"
 
 
-async def test_permission_request_is_rejected_until_dialog_exists() -> None:
+async def test_permission_request_is_dispatched_and_not_answered_automatically() -> None:
+    # S4-T2 replaced the S3 behaviour (reject at once): the UI asks the user.
     request = PermissionRequest("p1", options=[PermissionOption("allow", "Allow", "allow_once")])
     controller, sink, backend, _ = make([request, Done("end_turn")])
     controller.send("x")
     await settle(controller)
-    assert backend.permissions == [("p1", None)]
-    assert sink.types() == ["turn_start", "done"]
+    assert backend.permissions == []
+    assert sink.types() == ["turn_start", "permission_request", "done"]
 
 
 async def test_no_agent_send_answers_error() -> None:
